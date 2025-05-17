@@ -24,7 +24,7 @@ IGNORE_EXTENSIONS = ['.pyc', '.pyo', '.pyd', '.so', '.dll', '.exe', '.o',
                      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
                      '.zip', '.tar', '.gz', '.rar', '.7z',
                      '.db', '.sqlite', '.sqlite3', '.log',
-                     '.swp', '.swo']
+                     '.swp', '.swo', '.webp']
 
 def should_ignore(path, root_dir, ignore_list, ignore_extensions):
     """
