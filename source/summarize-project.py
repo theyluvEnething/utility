@@ -14,7 +14,7 @@ except ImportError:
 
 # IGNORE_LIST: Directories and files to ignore.
 # Added '.angular' to this list. '.vscode' was already present.
-IGNORE_LIST = ['.git', '__pycache__', 'venv', '.venv', 'node_modules', '.vscode', '.idea', 'dist', 'build', '.angular']
+IGNORE_LIST = ['.git', '__pycache__', 'venv', '.venv', 'node_modules', '.vscode', '.idea', 'dist', 'build', '.angular', 'temp']
 
 # IGNORE_EXTENSIONS: File extensions to ignore.
 IGNORE_EXTENSIONS = ['.pyc', '.pyo', '.pyd', '.so', '.dll', '.exe', '.o',
@@ -24,7 +24,7 @@ IGNORE_EXTENSIONS = ['.pyc', '.pyo', '.pyd', '.so', '.dll', '.exe', '.o',
                      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
                      '.zip', '.tar', '.gz', '.rar', '.7z',
                      '.db', '.sqlite', '.sqlite3', '.log',
-                     '.swp', '.swo', '.webp']
+                     '.swp', '.swo', '.webp', '.ignore']
 
 def should_ignore(path, root_dir, ignore_list, ignore_extensions):
     """
