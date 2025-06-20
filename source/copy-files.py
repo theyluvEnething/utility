@@ -12,7 +12,6 @@ except ImportError:
     sys.exit(1)
 
 def get_file_extension_filter():
-    """Prompts the user for a file extension filter."""
     print("Enter file extension to filter (e.g., py, .txt).")
     print("Leave blank to include all files.")
     filter_input = input("Extension: ").strip().lower()
@@ -26,25 +25,18 @@ def get_file_extension_filter():
         return f".{filter_input}"
 
 def should_include_file(filename, extension_filter):
-    """Checks if a file should be included based on the filter."""
     if not extension_filter:
         return True
     return filename.lower().endswith(extension_filter)
 
 def format_file_block(relative_path, content):
-    """Formats a single file's path and content into the angle-bracket format."""
     return (
-        f"--- <{relative_path}> ---\n"
-        f"{content}"
-        f"--- </{relative_path}> ---\n"
-        f"=====\n"
+        f'<file path="{relative_path}">\n'
+        f'{content}\n'
+        f'</file>'
     )
 
 def main():
-    """
-    Prompts for a file extension filter, traverses the current directory,
-    formats matching files into angle-bracket blocks, and copies to clipboard.
-    """
     extension_filter = get_file_extension_filter()
     print(f"Filtering for extension: '{extension_filter}' (leave blank for all files)")
 
@@ -63,7 +55,6 @@ def main():
 
             if should_include_file(filename, extension_filter):
                 try:
-                    # Use 'io.open' for more robust encoding handling
                     with io.open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
 
@@ -81,8 +72,7 @@ def main():
              print(f"Encountered errors reading {error_count} file(s).")
         sys.exit(0)
 
-    # Join all blocks
-    full_output = "".join(output_blocks)
+    full_output = "\n".join(output_blocks)
 
     try:
         pyperclip.copy(full_output)
