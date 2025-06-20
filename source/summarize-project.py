@@ -11,59 +11,19 @@ except ImportError:
     print("Please install it by running: pip install pyperclip", file=sys.stderr)
     sys.exit(1)
 
-DEFAULT_IGNORED_DIRECTORIES = {
-    '.git',
-    '.idea',
-    '.vscode',
-    '__pycache__',
-    'build',
-    'dist',
-    '.venv',
-    'venv',
-    'env',
-    'node_modules',
-    'bin',
-    'obj',
-    '.pytest_cache',
-    '.mypy_cache',
-    'eggs',
-    '.eggs',
-    'lib',
-    'lib64',
-    'parts',
-    'sdist',
-    'var',
-    'wheels',
-    'share',
-    'htmlcov',
-    '.tox',
-    '.nox',
-    '.cache',
-    'instance',
-    '.scrapy',
-    'docs/_build',
-    '.pybuilder',
-    'target',
-    '.ipynb_checkpoints',
-    'profile_default',
-    '.spyderproject',
-    '.spyproject',
-    '.ropeproject',
-    'site',
-    '.pyre',
-    '.pytype',
-    'cython_debug',
-    '__pypackages__',
-    'builds',
-}
+# IGNORE_LIST: Directories and files to ignore.
+# Added '.angular' to this list. '.vscode' was already present.
+IGNORE_LIST = ['.git', '__pycache__', 'venv', '.venv', 'node_modules', '.vscode', '.idea', 'dist', 'build', '.angular', 'temp']
 
-DEFAULT_IGNORED_FILENAMES = {
-    '.gitignore',
-    '.gitattributes',
-    'LICENSE',
-    'LICENSE.md',
-    'README.md'
-}
+# IGNORE_EXTENSIONS: File extensions to ignore.
+IGNORE_EXTENSIONS = ['.pyc', '.pyo', '.pyd', '.so', '.dll', '.exe', '.o',
+                     '.a', '.lib', '.class', '.jar',
+                     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.ico',
+                     '.mp3', '.wav', '.ogg', '.mp4', '.avi', '.mov', '.wmv',
+                     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+                     '.zip', '.tar', '.gz', '.rar', '.7z',
+                     '.db', '.sqlite', '.sqlite3', '.log',
+                     '.swp', '.swo', '.webp', '.ignore']
 
 DEFAULT_IGNORED_EXTENSIONS = {
     'pyc', 'pyo', 'pyd', 'so', 'dll', 'egg', 'manifest', 'spec', 'mo', 'pot',
