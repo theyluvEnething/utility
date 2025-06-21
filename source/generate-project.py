@@ -12,39 +12,30 @@ except ImportError:
     print("pip install pyperclip", file=sys.stderr)
     sys.exit(1)
 
-# Updated regex to parse the new, robust XML/CDATA format.
-# It captures the path from the <file> tag and the content from within the CDATA block.
 FILE_BLOCK_PATTERN = re.compile(
     r'<file path="(.+?)">\s*<!\[CDATA\[(.*?)]]>\s*</file>',
     re.DOTALL
 )
 
 def parse_project_structure(text_content):
-    """Parses the project structure from text using the new XML/CDATA format."""
+    """Parses the project structure from text using the XML/CDATA format."""
     project_data = []
     parse_errors = []
     last_match_end = 0
 
-    # Ignore the system and user prompt sections before parsing for files
     try:
-        # Find the start of the first file block to ignore everything before it (prompts, tree, etc.)
         first_file_match = re.search(r'<file path=', text_content)
         if first_file_match:
             text_content = text_content[first_file_match.start():]
     except Exception:
-        pass # If regex fails, proceed with original content
+        pass
 
     for match in FILE_BLOCK_PATTERN.finditer(text_content):
         filename = match.group(1).strip()
-        
-        # The content is inside the CDATA block.
-        # The summarize-project script adds a newline before and after the content for readability.
-        # We strip exactly one leading and one trailing newline if they exist.
         content = match.group(2)
-        if content.startswith('\n'):
-            content = content[1:]
-        if content.endswith('\n'):
-            content = content[:-1]
+
+        content = re.sub(r'^\r?\n', '', content)
+        content = re.sub(r'\r?\n$', '', content)
 
         if not filename:
             parse_errors.append(f"Error: Found file block with empty filename near position {match.start()}.")
@@ -53,9 +44,7 @@ def parse_project_structure(text_content):
         project_data.append({"filename": filename, "content": content})
         last_match_end = match.end()
 
-    # Check for any remaining text that wasn't parsed
     remaining_text = text_content[last_match_end:].strip()
-    # Ignore the final </USER> tag
     if remaining_text.endswith("</USER>"):
         remaining_text = remaining_text[:-len("</USER>")].strip()
 
@@ -84,7 +73,7 @@ def main():
         sys.exit(1)
 
     print(f"Read {len(clipboard_content)} characters from clipboard.")
-    print("Parsing project structure using the new XML/CDATA format...")
+    print("Parsing project structure using the XML/CDATA format...")
     project_data, parse_errors = parse_project_structure(clipboard_content)
 
     if parse_errors:
@@ -107,11 +96,10 @@ def main():
     print(f"\nProject will be generated in the current directory: {target_directory}")
     print("-" * 30)
     print("Files to be created/overwritten:")
-    
+
     valid_files = []
     for item in project_data:
         relative_path = os.path.normpath(item['filename'].strip()).replace('\\', '/')
-        # Security check: prevent absolute paths and path traversal
         if os.path.isabs(relative_path) or ".." in relative_path.split('/'):
              print(f"  - SKIPPING INVALID PATH: {item['filename']} (Absolute paths or '..' are not allowed)")
              continue
@@ -144,8 +132,7 @@ def main():
 
         try:
             full_path = os.path.join(target_directory, relative_path)
-            
-            # Final security check to ensure we don't write outside the target directory
+
             real_target_dir = os.path.realpath(target_directory)
             real_full_path = os.path.realpath(os.path.dirname(full_path))
             if not real_full_path.startswith(real_target_dir):
@@ -161,8 +148,7 @@ def main():
                     raise OSError(f"Cannot create directory '{os.path.dirname(relative_path)}': a file with that name exists.")
 
             print(f"  Writing file: {relative_path} ({len(content)} bytes) ... ", end="")
-            # Use 'w' for text mode, which handles line endings correctly by default.
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, 'w', encoding='utf-8', newline='') as f:
                 f.write(content)
             print("Done.")
             created_count += 1
