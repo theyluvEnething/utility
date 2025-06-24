@@ -124,7 +124,7 @@ def is_binary_file(file_path):
     except IOError:
         return True
 
-def should_ignore(path, root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set):
+def should_ignore(path, root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set):
     """Determines if a given path should be ignored."""
     abs_path = os.path.abspath(path)
     filename = os.path.basename(abs_path)
@@ -145,7 +145,10 @@ def should_ignore(path, root_dir, ignored_dirs_set, ignored_exts_set, ignored_fi
 
     if os.path.isfile(abs_path):
         _, ext = os.path.splitext(filename)
-        if ext.lower().lstrip('.') in ignored_exts_set:
+        normalized_ext = ext.lower().lstrip('.')
+        if normalized_ext in ignored_exts_set:
+            return True
+        if only_exts_set and normalized_ext not in only_exts_set:
             return True
 
     try:
@@ -157,7 +160,7 @@ def should_ignore(path, root_dir, ignored_dirs_set, ignored_exts_set, ignored_fi
             return True
     return False
 
-def generate_tree_structure(root_dir_param, ignored_dirs_set, ignored_exts_set, ignored_filenames_set):
+def generate_tree_structure(root_dir_param, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set):
     """Generates a string representation of the directory tree."""
     tree_string_io = io.StringIO()
     visited_real_paths_for_tree = set()
@@ -177,7 +180,7 @@ def generate_tree_structure(root_dir_param, ignored_dirs_set, ignored_exts_set, 
         renderable_items = []
         for entry in entries:
             full_path = os.path.join(current_path, entry)
-            if not should_ignore(full_path, root_dir_param, ignored_dirs_set, ignored_exts_set, ignored_filenames_set):
+            if not should_ignore(full_path, root_dir_param, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set):
                 renderable_items.append({'name': entry, 'path': full_path, 'is_dir': os.path.isdir(full_path)})
 
         for i, item in enumerate(renderable_items):
@@ -191,7 +194,7 @@ def generate_tree_structure(root_dir_param, ignored_dirs_set, ignored_exts_set, 
     _generate_recursive(root_dir_param, "")
     return tree_string_io.getvalue()
 
-def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set):
+def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set):
     """Walks the project, collates content of non-ignored files using the new XML format."""
     output_stream = io.StringIO()
     file_count = 0
@@ -200,7 +203,7 @@ def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignore
     reported_ignored_files = []
 
     for dirpath, dirnames, filenames in os.walk(root_dir, topdown=True, followlinks=False):
-        dirnames[:] = [d for d in dirnames if not should_ignore(os.path.join(dirpath, d), root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set)]
+        dirnames[:] = [d for d in dirnames if not should_ignore(os.path.join(dirpath, d), root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set)]
         
         filenames.sort()
         for filename in filenames:
@@ -211,7 +214,7 @@ def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignore
             if abs_file_path in processed_abs_paths:
                 continue
 
-            if should_ignore(full_file_path, root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set):
+            if should_ignore(full_file_path, root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set):
                 reported_ignored_files.append(relative_path)
                 continue
 
@@ -249,6 +252,11 @@ def main():
         default=[],
         help="File extension to ignore (e.g., 'json'). Can be specified multiple times or as a comma-separated list in brackets (e.g., '[json,txt]')."
     )
+    parser.add_argument(
+        '--only',
+        default=None,
+        help="Only include files with specified extension(s). E.g., 'py' or '[py,js,css]'."
+    )
     args = parser.parse_args()
     project_root = os.getcwd()
 
@@ -260,23 +268,34 @@ def main():
         else:
             user_specified_ignored_extensions.add(item.lstrip('.'))
 
+    user_specified_only_extensions = set()
+    if args.only:
+        item = args.only.strip()
+        if item.startswith('[') and item.endswith(']'):
+            extensions = [ext.strip().lstrip('.') for ext in item[1:-1].split(',') if ext.strip()]
+            user_specified_only_extensions.update(extensions)
+        else:
+            user_specified_only_extensions.add(item.lstrip('.'))
+
     final_ignored_directories = DEFAULT_IGNORED_DIRECTORIES
     final_ignored_extensions = DEFAULT_IGNORED_EXTENSIONS.union(user_specified_ignored_extensions)
     final_ignored_filenames = DEFAULT_IGNORED_FILENAMES
 
     print(f"Starting collation in: {project_root}")
+    if user_specified_only_extensions:
+        print(f"Including ONLY extensions: {sorted(list(user_specified_only_extensions))}")
     print(f"Ignoring Directories: {sorted(list(final_ignored_directories))}")
     print(f"Ignoring Filenames: {sorted(list(final_ignored_filenames))}")
     print(f"Ignoring Extensions: {sorted(list(final_ignored_extensions))}")
     print("-" * 30)
 
     print("Generating directory tree structure...")
-    tree_structure_str = generate_tree_structure(project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames)
+    tree_structure_str = generate_tree_structure(project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames, user_specified_only_extensions)
     print("Directory tree generated." if tree_structure_str else "Directory tree is empty or all items were ignored.")
     print("-" * 30)
 
     collated_content_str, processed_files_list, ignored_files_list, file_count = collate_project_content(
-        project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames
+        project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames, user_specified_only_extensions
     )
     
     print("-" * 30)
@@ -319,7 +338,7 @@ def main():
             sys.exit(1)
     else:
         print(f"No files were processed and the directory tree is empty in '{project_root}'.")
-        print("Check your ignore settings or the directory contents. Clipboard is unchanged.")
+        print("Check your ignore/only settings or the directory contents. Clipboard is unchanged.")
 
 if __name__ == "__main__":
     main()
