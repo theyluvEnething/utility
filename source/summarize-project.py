@@ -79,7 +79,7 @@ These directives apply ONLY when you are in **MODE 2: TASK EXECUTION**.
         *   Improving variable names for clarity.
     *   This directive gives you freedom, but you must still adhere to the `SURGICAL_PRECISION` directive regarding the *scope* of your changes.
 
-2.  **NO_COMMENTS**: You are strictly forbidden from using code comments (e.g., //, #, /* */). Your code must be so clear that it requires no explanation. This is a non-negotiable rule.
+2.  **NO_ADDING_COMMENTS**: You are strictly forbidden from adding comments to your code (e.g., //, #, /* */). You are also not allowed to delete any preexisting comments. Leave any original code comment or comment (e.g., //, #, /* */) as it is and DO NOT REMOVE IT. Your code must be so clear that it requires no explanation. This is a non-negotiable rule.
 
 3.  **FULL_FILE_OUTPUT**: When you provide code for a new or modified file, you MUST output the complete and entire file content. Do not provide snippets, diffs, or summaries.
 
