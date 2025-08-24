@@ -2,16 +2,19 @@
 import cmd
 import os
 import re
+import shlex
 import subprocess
 import sys
 
 class ShInterpreter(cmd.Cmd):
     intro = 'Welcome to the sh-lite interpreter. Type help or ? to list commands.'
-    prompt = '$ '
+    prompt = ''
 
-    def __init__(self):
+    def __init__(self, script_mode=False):
         super().__init__()
         self.env = os.environ.copy()
+        self.script_mode = script_mode
+        self.last_return_code = 0
 
     def preloop(self):
         self._update_prompt()
@@ -21,6 +24,8 @@ class ShInterpreter(cmd.Cmd):
         return stop
 
     def _update_prompt(self):
+        if self.script_mode:
+            return
         try:
             cwd = os.getcwd()
         except FileNotFoundError:
@@ -44,8 +49,12 @@ class ShInterpreter(cmd.Cmd):
 
         try:
             os.chdir(path)
+            self.last_return_code = 0
         except Exception as e:
             print(f"cd: {e}", file=sys.stderr)
+            self.last_return_code = 1
+            if self.script_mode:
+                return True
 
     def do_export(self, arg):
         """Set an environment variable for this session. Usage: export KEY=value"""
@@ -54,8 +63,29 @@ class ShInterpreter(cmd.Cmd):
         if match:
             key, value = match.groups()
             self.env[key] = value.strip().strip('"\'')
+            self.last_return_code = 0
         else:
             print("Usage: export KEY=value", file=sys.stderr)
+            self.last_return_code = 1
+            if self.script_mode:
+                return True
+
+    def do_echo(self, arg):
+        """Prints text to the console. Usage: echo [-n] [string ...]"""
+        try:
+            parts = shlex.split(self._expand_vars(arg))
+            no_newline = False
+            if parts and parts[0] == '-n':
+                no_newline = True
+                parts.pop(0)
+            
+            print(' '.join(parts), end='' if no_newline else '\n')
+            self.last_return_code = 0
+        except ValueError as e:
+            print(f"echo: parse error: {e}", file=sys.stderr)
+            self.last_return_code = 1
+            if self.script_mode:
+                return True
 
     def default(self, line):
         """Execute a command in the system shell."""
@@ -64,9 +94,15 @@ class ShInterpreter(cmd.Cmd):
             return
 
         try:
-            subprocess.run(line, shell=True, env=self.env)
+            result = subprocess.run(line, shell=True, env=self.env, check=False)
+            self.last_return_code = result.returncode
+            if self.script_mode and self.last_return_code != 0:
+                return True
         except Exception as e:
             print(f"Error executing command: {e}", file=sys.stderr)
+            self.last_return_code = 1
+            if self.script_mode:
+                return True
 
     def do_exit(self, arg):
         """Exit the interpreter."""
@@ -102,20 +138,35 @@ def run_script(interpreter, script_path, args):
     except Exception as e:
         print(f"Error reading or executing script {script_path}: {e}", file=sys.stderr)
         sys.exit(1)
+    
 
 def main():
-    interpreter = ShInterpreter()
-
     if len(sys.argv) > 1:
-        script_path = sys.argv
         script_args = sys.argv[2:]
-        
-        script_dir = os.path.dirname(script_path)
-        if script_dir:
+    elif len(sys.argv) < 2:
+        print(f"sh: No file was provided", file=sys.stderr)
+        sys.exit(1)
+
+    script_path = os.path.abspath(sys.argv[1])
+    script_dir = os.path.dirname(script_path)
+    
+    interpreter = ShInterpreter(script_mode=True)
+
+    if script_dir:
+        try:
             os.chdir(script_dir)
+        except FileNotFoundError:
+            print(f"sh: {script_dir}: No such file or directory", file=sys.stderr)
+            sys.exit(127)
+        except Exception as e:
+            print(f"sh: failed to change directory to '{script_dir}': {e}", file=sys.stderr)
+            sys.exit(1)
+        script_basename = os.path.basename(script_path)
         
-        run_script(interpreter, os.path.basename(script_path), script_args)
-    else:
+        run_script(interpreter, script_basename, script_args)
+        sys.exit(interpreter.last_return_code)
+        
+        interpreter = ShInterpreter(script_mode=False)
         interpreter.cmdloop()
 
 if __name__ == "__main__":
