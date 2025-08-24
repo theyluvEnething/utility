@@ -2,6 +2,7 @@
 import os
 import sys
 import re
+import shutil  # <-- NEW: needed for directory deletion
 
 try:
     import pyperclip
@@ -182,19 +183,28 @@ def main():
             print(f"\nError renaming file: {e}")
             counts['errors'] += 1
 
+    # ---- FIXED: robust deletion for files, symlinks, and directories ----
     for op in deletions:
         try:
             path = os.path.join(target_directory, os.path.normpath(op['path']))
             print(f"  Deleting: {op['path']} ... ", end="")
             if os.path.exists(path):
-                os.remove(path)
+                if os.path.islink(path) or os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    print("Skipped (unknown file type).")
+                    counts['deleted'] += 1
+                    continue
                 print("Done.")
             else:
                 print("Skipped (not found).")
             counts['deleted'] += 1
-        except (OSError, IOError) as e:
-            print(f"\nError deleting file: {e}")
+        except (OSError, IOError, PermissionError) as e:
+            print(f"\nError deleting file or directory: {e}")
             counts['errors'] += 1
+    # --------------------------------------------------------------------
 
     for op in creations:
         try:
