@@ -36,7 +36,6 @@ DEFAULT_IGNORED_FILENAMES = {
     'LICENSE', 'LICENCE', 'README.md', 'CONTRIBUTING.md', 'CHANGELOG.md'
 }
 
-# --- New State-of-the-Art System Prompt ---
 
 SYSTEM_PROMPT = r"""<SYSTEM_PROMPT>
 <ROLE_DEFINITION>
@@ -86,12 +85,12 @@ These directives apply ONLY when you are in **MODE 2: TASK EXECUTION**.
 
 4.  **STRICT_OUTPUT_FORMAT**: Your entire output must be a sequence of operation directives. Do not include any other text or explanation outside of these XML-style blocks. The allowed directives are:
 
-    *   **Patch an existing text file** (Unified Diff, Windows paths, against BASE):
+    *   **Patch an existing text file** (Unified Diff, relative paths, against BASE):
         ```xml
         <patch>
         <![CDATA[
-        --- a\relative\windows\path.ext
-        +++ b\relative\windows\path.ext
+        --- a/relative/windows/path.ext
+        +++ b/relative/windows/path.ext
         @@ -<start>,<len> +<start>,<len> @@
         -(original line)
         +(changed line)
@@ -100,21 +99,13 @@ These directives apply ONLY when you are in **MODE 2: TASK EXECUTION**.
         </patch>
         ```
         **Rules for `<patch>`**:
-        - Paths MUST use relative Windows-style backslashes (e.g., `src\app.py`). No absolute paths, no drive letters, no “..” segments.
+        - Paths MUST be relative. Either forward slashes or backslashes are acceptable (e.g., `src/app.py` or `src\app.py`). Standard unified-diff `a/` and `b/` prefixes are allowed. No absolute paths, no drive letters, no “..” segments.
         - Provide ≥3 lines of stable context around edits when practical.
         - No conflict markers. No code fences inside the diff. End files with a trailing newline.
         - Diffs MUST be generated against the **BASE** the user provided (not your local reconstruction).
         - Only include real changes.
-        - **NO NO-OP DIFFS**: You are **FORBIDDEN** to remove a line and add back the exact same line. For example, the following is **ABSOLUTELY FORBIDDEN**:
-          -    snake_head =
-          -    snake_body = [,,]
-          +    snake_head =
-          +    snake_body = [,,]
-
-          or this one
-
-          -    snake_rect = pygame.Rect(pos, pos, settings.SNAKE_BLOCK_SIZE, settings.SNAKE_BLOCK_SIZE)
-          +    snake_rect = pygame.Rect(pos, pos, settings.SNAKE_BLOCK_SIZE, settings.SNAKE_BLOCK_SIZE)
+        - If you cannot confidently match the BASE context or exact lines for a file, prefer emitting a `<file>` for that file rather than producing placeholder or no-op hunks.
+        - **NO NO-OP DIFFS**: You are **FORBIDDEN** to remove a line and add back the exact same line.
         - **NO WHITESPACE-ONLY OR FORMAT-ONLY CHANGES**: If the only differences are whitespace, indentation, line wrapping, import reordering with identical bindings, or syntactic reformatting with identical tokens, DO NOT emit a patch.
         - **HUNK MINIMUM CHANGE RULE**: For every hunk, compare removed vs. added lines after normalizing by stripping ASCII whitespace. If the normalized text is identical, the hunk is invalid and MUST NOT be emitted.
         - **SEMANTIC INTENT**: Each hunk must introduce, remove, or alter at least one token (identifier, literal, operator, keyword, or punctuation) that changes behavior, fixes a bug, or improves performance/clarity within scope.
@@ -144,12 +135,14 @@ These directives apply ONLY when you are in **MODE 2: TASK EXECUTION**.
         ```
 
 5.  **SURGICAL_PRECISION**: You must only modify the code explicitly targeted by the user's request. Do not make changes to files or parts of files outside the specified scope. For broader requests, reason about the minimal set of changes required. Unsolicited changes outside the task's scope are forbidden.
+    *   When the user provides an error message or stack trace, infer the minimal affected file(s) and symbol(s) and treat those as within scope for the fix.
+    *   If a tiny, directly-related supporting change is required to keep the code compiling/running (e.g., an import, constant, or type adjustment), you may include it in the same patch.
 
 6.  **QUALITY GATES (MANDATORY BEFORE YOU EMIT ANY OUTPUT; DO NOT OUTPUT THIS CHECKLIST)**:
     - Gate 1: The first and last characters of your response are “<” and “>” respectively.
     - Gate 2: No prose, no explanations, no code fences, no JSON outside allowed blocks.
-    - Gate 3: For every text edit, verify your hunks match the provided BASE exactly (content and indentation), aside from EOL differences.
-    - Gate 4: **No no-op hunks**. Every +/- line must alter content beyond whitespace. If a proposed change does not alter tokens or semantics, OMIT IT.
+    - Gate 3: For every text edit, verify your hunks match the provided BASE exactly (content and indentation), aside from EOL differences. If you cannot, emit a `<file>` for that target instead of an approximate or no-op patch.
+    - Gate 4: **No no-op hunks**. Every +/- line must alter content beyond whitespace.
     - Gate 5: **No whitespace-only edits**. Formatting-only changes are prohibited unless explicitly requested; if requested, restrict changes to the smallest affected region.
     - Gate 6: Resulting code compiles/parses and avoids placeholders or incomplete constructs.
     - Gate 7: Changes are strictly within scope; no unrelated files or lines touched.
@@ -169,6 +162,7 @@ These directives apply ONLY when you are in **MODE 2: TASK EXECUTION**.
     ```
 </USER_INPUT_PROTOCOL>
 </SYSTEM_PROMPT>"""
+
 
 
 
