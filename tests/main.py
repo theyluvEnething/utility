@@ -1,85 +1,103 @@
 import pygame
 import sys
+import random
 from config import settings
 from drawing import shapes
 
-# Initialize Pygame
-pygame.init()
-
-# Screen setup
-screen = pygame.display.set_mode((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
-pygame.display.set_caption("Interactive Circle")
-
-# Clock for controlling FPS
-clock = pygame.time.Clock()
-
-# Font for instructions
-try:
-    # Try to use a default system font if available
-    font = pygame.font.Font(None, 30)
-except pygame.error:
-    # Fallback to a common system font
-    font = pygame.font.SysFont('arial', 30)
-
-# Circle state
-circle_x = settings.SCREEN_WIDTH // 2
-circle_y = settings.SCREEN_HEIGHT // 2
-circle_radius = settings.INITIAL_CIRCLE_RADIUS
-current_color_index = 0
-circle_color = settings.AVAILABLE_COLORS[current_color_index]
-
-# Game loop
-running = True
-while running:
-    # Event handling
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_c:
-                current_color_index = (current_color_index + 1) % len(settings.AVAILABLE_COLORS)
-                circle_color = settings.AVAILABLE_COLORS[current_color_index]
-            if event.key == pygame.K_ESCAPE: # Allow quitting with ESC
-                running = False
-
-    # Key states for continuous movement
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-        circle_x -= settings.CIRCLE_MOVE_SPEED
-    if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-        circle_x += settings.CIRCLE_MOVE_SPEED
-    if keys[pygame.K_UP] or keys[pygame.K_w]:
-        circle_y -= settings.CIRCLE_MOVE_SPEED
-    if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-        circle_y += settings.CIRCLE_MOVE_SPEED
-
-    # Keep circle within screen bounds
-    # Adjust bounds check to prevent circle from being partially off-screen
-    circle_x = max(circle_radius, min(circle_x, settings.SCREEN_WIDTH - circle_radius))
-    circle_y = max(circle_radius, min(circle_y, settings.SCREEN_HEIGHT - circle_radius))
-
-    # Drawing
-    screen.fill(settings.BACKGROUND_COLOR) # Fill background
-
-    # Draw the circle
-    shapes.draw_circle(screen, circle_color, (circle_x, circle_y), circle_radius)
-
-    # Draw instructions
-    instructions = [
-        "Arrows/WASD: Move circle",
-        "C: Change color",
-        "ESC: Quit"
-    ]
-    for i, line in enumerate(instructions):
-        shapes.draw_text(screen, line, (10, 10 + i * 25), font, settings.TEXT_COLOR)
-
-
-    # Update the display
+def game_over(screen, font, score):
+    """Displays the game over screen and exits."""
+    game_over_text = font.render(f"Game Over! Your Score: {score}", True, settings.TEXT_COLOR)
+    text_rect = game_over_text.get_rect(center=(settings.SCREEN_WIDTH / 2, settings.SCREEN_HEIGHT / 2))
+    screen.blit(game_over_text, text_rect)
     pygame.display.flip()
+    pygame.time.wait(3000)
+    pygame.quit()
+    sys.exit()
 
-    # Cap the frame rate
-    clock.tick(settings.FPS)
+def main():
+    pygame.init()
 
-# Quit Pygame
-pygame.quit()
-sys.exit()
+    screen = pygame.display.set_mode((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+    pygame.display.set_caption("Snake Game")
+    clock = pygame.time.Clock()
+    font = pygame.font.Font(None, 36)
+
+    # Snake initial setup
+    snake_head =
+    snake_body = [,,]
+    direction = 'RIGHT'
+    change_to = direction
+
+    # Food initial setup
+    food_pos = [
+        random.randrange(0, settings.SCREEN_WIDTH // settings.SNAKE_BLOCK_SIZE) * settings.SNAKE_BLOCK_SIZE,
+        random.randrange(0, settings.SCREEN_HEIGHT // settings.SNAKE_BLOCK_SIZE) * settings.SNAKE_BLOCK_SIZE
+    ]
+    
+    score = 0
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if (event.key == pygame.K_UP or event.key == pygame.K_w) and direction != 'DOWN':
+                    change_to = 'UP'
+                elif (event.key == pygame.K_DOWN or event.key == pygame.K_s) and direction != 'UP':
+                    change_to = 'DOWN'
+                elif (event.key == pygame.K_LEFT or event.key == pygame.K_a) and direction != 'RIGHT':
+                    change_to = 'LEFT'
+                elif (event.key == pygame.K_RIGHT or event.key == pygame.K_d) and direction != 'LEFT':
+                    change_to = 'RIGHT'
+        
+        direction = change_to
+
+        # Snake movement
+        if direction == 'UP':
+            snake_head -= settings.SNAKE_BLOCK_SIZE
+        elif direction == 'DOWN':
+            snake_head += settings.SNAKE_BLOCK_SIZE
+        elif direction == 'LEFT':
+            snake_head -= settings.SNAKE_BLOCK_SIZE
+        elif direction == 'RIGHT':
+            snake_head += settings.SNAKE_BLOCK_SIZE
+
+        # Snake body growth
+        snake_body.insert(0, list(snake_head))
+        if snake_head == food_pos and snake_head == food_pos:
+            score += 1
+            food_pos = [
+                random.randrange(0, settings.SCREEN_WIDTH // settings.SNAKE_BLOCK_SIZE) * settings.SNAKE_BLOCK_SIZE,
+                random.randrange(0, settings.SCREEN_HEIGHT // settings.SNAKE_BLOCK_SIZE) * settings.SNAKE_BLOCK_SIZE
+            ]
+        else:
+            snake_body.pop()
+
+        # Drawing
+        screen.fill(settings.BACKGROUND_COLOR)
+
+        for pos in snake_body:
+            snake_rect = pygame.Rect(pos, pos, settings.SNAKE_BLOCK_SIZE, settings.SNAKE_BLOCK_SIZE)
+            shapes.draw_rectangle(screen, settings.SNAKE_COLOR, snake_rect)
+
+        food_rect = pygame.Rect(food_pos, food_pos, settings.SNAKE_BLOCK_SIZE, settings.SNAKE_BLOCK_SIZE)
+        shapes.draw_rectangle(screen, settings.FOOD_COLOR, food_rect)
+
+        # Wall collision
+        if not (0 <= snake_head < settings.SCREEN_WIDTH and 0 <= snake_head < settings.SCREEN_HEIGHT):
+            game_over(screen, font, score)
+
+        # Self collision
+        for block in snake_body[1:]:
+            if snake_head == block:
+                game_over(screen, font, score)
+
+        # Display score
+        shapes.draw_text(screen, f"Score: {score}", (10, 10), font, settings.TEXT_COLOR)
+
+        pygame.display.update()
+        clock.tick(settings.SNAKE_SPEED)
+
+if __name__ == '__main__':
+    main()
