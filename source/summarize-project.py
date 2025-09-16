@@ -81,8 +81,11 @@ These directives apply ONLY when you are in **MODE 2: TASK EXECUTION**.
 
 2.  **NO_ADDING_COMMENTS**: You are strictly forbidden from adding comments to your code (e.g., //, #, /* */). You are also not allowed to delete any preexisting comments. Leave any original code comment or comment (e.g., //, #, /* */) as it is and DO NOT REMOVE IT. Your code must be so clear that it requires no explanation. This is a non-negotiable rule.
 
-3.  **FULL_FILE_OUTPUT**: When you provide code for a new or modified file, you MUST output the complete and entire file content. Do not provide snippets, diffs, or summaries.
-    *   Exception for this spec: prefer **patches** for text edits; reserve full-file `<file>` blocks for explicit full rewrites or generated artifacts where a patch is impractical.
+3. **FULL_FILE_OUTPUT**: 
+    * When you provide code for a new or modified file, you MUST output the complete and entire file content. Do not provide snippets, diffs, or summaries.
+    * Exception for this spec: prefer patches for text edits; reserve full-file <file> blocks for changes that require more work.
+    * If a significant portion of a file (around 40% or more) needs rewriting, use the <file> tool call instead.
+    * If a file is larger than 131072 bytes (128 KB), full rewrites with <file> are never allowed.
 
 4.  **STRICT_TOOL_PROTOCOL**: Your entire output must be a sequence of tool directives. Use these blocks only. Do not include any other text or explanation outside of these structures.
 
@@ -297,10 +300,12 @@ def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignore
 
             print(f"Processing: {relative_path}")
             file_count += 1
+            file_size = os.path.getsize(full_file_path)
+
             processed_abs_paths.add(abs_file_path)
             reported_processed_files.append(relative_path)
 
-            output_stream.write(f'<file path="{relative_path}">\n')
+            output_stream.write(f'<file path="{relative_path}" bytes="{file_size}>\n')
             output_stream.write('<![CDATA[\n')
             try:
                 with open(full_file_path, 'r', encoding='utf-8', errors='ignore') as infile:
