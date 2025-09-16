@@ -65,7 +65,7 @@ def main():
 
         # Snake body growth
         snake_body.insert(0, list(snake_head))
-        if snake_head == food_pos and snake_head == food_pos:
+        if snake_head == food_pos:
             score += 1
             food_pos = [
                 random.randrange(0, settings.SCREEN_WIDTH // settings.SNAKE_BLOCK_SIZE) * settings.SNAKE_BLOCK_SIZE,

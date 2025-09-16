@@ -1,29 +1,21 @@
-
-Screen dimensions
-
+# Screen dimensions
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
-Colors
-
+# Colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
-PURPLE = (128, 0, 128)
-ORANGE = (255, 165, 0)
 
 BACKGROUND_COLOR = WHITE
 TEXT_COLOR = BLACK
 
-AVAILABLE_COLORS = [RED, GREEN, BLUE, YELLOW, PURPLE, ORANGE]
+# Snake properties
+SNAKE_BLOCK_SIZE = 20
+SNAKE_SPEED = 15
+SNAKE_COLOR = GREEN
+FOOD_COLOR = RED
 
-Circle properties
-
-INITIAL_CIRCLE_RADIUS = 30
-CIRCLE_MOVE_SPEED = 4 # Pixels per frame
-
-Game settings
-FPS = 60 # Frames per second
+# Game settings
+FPS = 60  # Frames per second
