@@ -14,6 +14,9 @@ except ImportError:
     print("pip install pyperclip", file=sys.stderr)
     sys.exit(1)
 
+# -----------------------------
+# Patterns for directive blocks
+# -----------------------------
 FILE_BLOCK_PATTERN = re.compile(
     r'<file path="(.+?)">\s*<!\[CDATA\[(.*?)]]>\s*</file>',
     re.DOTALL
@@ -29,7 +32,11 @@ BINARY_BLOCK_PATTERN = re.compile(
     re.DOTALL
 )
 
-def parse_operations(text_content):
+# Hunk header pattern (unified diff)
+HUNK_HEADER_RE = re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@.*')
+
+
+def parse_operations(text_content, *, debug=False):
     operations = []
     parse_errors = []
 
@@ -50,7 +57,7 @@ def parse_operations(text_content):
     for item in all_matches:
         match = item['match']
         op_type = item['type']
-        
+
         unrecognized_text = text_content[last_match_end:match.start()].strip()
         if unrecognized_text:
             parse_errors.append(f"Warning: Ignoring unrecognized text block ending at position {match.start()}.")
@@ -91,26 +98,34 @@ def parse_operations(text_content):
                 operations.append({'type': 'binary', 'path': path, 'encoding': encoding, 'content': content})
             else:
                 parse_errors.append(f"Error: Found <binary> tag with missing attributes at position {match.start()}.")
-        
+
         last_match_end = match.end()
 
     remaining_text = text_content[last_match_end:].strip()
-    if remaining_text:
-        # This can be noisy for developer notes, so we'll quiet it.
-        pass
+    # Quiet remainder: often developer notes
 
     if not operations and not text_content.strip():
         parse_errors.append("Error: No valid operation tags (<file>, <delete>, <rename>) found.")
 
+    if debug:
+        print(f"[DEBUG] Parsed {len(operations)} operation(s) from clipboard", file=sys.stderr)
+        if parse_errors:
+            print(f"[DEBUG] parse_errors: {len(parse_errors)}", file=sys.stderr)
+
     return operations, parse_errors
+
 
 def is_safe_path(path_str):
     normalized_path = os.path.normpath(path_str).replace('\\', '/')
     return not (os.path.isabs(normalized_path) or normalized_path.startswith('../') or '..' in normalized_path.split('/'))
 
-def parse_unified_diff(diff_content):
+
+def parse_unified_diff(diff_content, *, debug=False):
     import re
     operations, errors = [], []
+
+    if debug:
+        print(f"[DEBUG] parse_unified_diff: {len(diff_content)} chars of diff input", file=sys.stderr)
 
     # Ignore any text/noise before the first '--- ' header
     lines = diff_content.splitlines()
@@ -118,7 +133,10 @@ def parse_unified_diff(diff_content):
         first = next(i for i, ln in enumerate(lines) if ln.startswith('--- '))
         lines = lines[first:]
     except StopIteration:
-        return operations, ["No unified diff headers ('--- ') found."]
+        msg = "No unified diff headers ('--- ') found."
+        if debug:
+            print(f"[DEBUG] {msg}", file=sys.stderr)
+        return operations, [msg]
 
     # Split into file blocks whenever a new '--- ' line appears
     blocks, cur, started = [], [], False
@@ -148,15 +166,19 @@ def parse_unified_diff(diff_content):
     def _is_null_path(raw_token):
         return raw_token.lower() in ('/dev/null', 'nul')
 
-    for block in blocks:
+    for idx, block in enumerate(blocks):
         blines = block.splitlines()
         if len(blines) < 2:
             errors.append(f"Invalid diff block (too short): {block[:200]}")
+            if debug:
+                print(f"[DEBUG] Block {idx}: too short\n{block}", file=sys.stderr)
             continue
 
         from_header, to_header = blines[0], blines[1]
         if not from_header.startswith('--- ') or not to_header.startswith('+++ '):
             errors.append(f"Malformed diff header:\n{block[:200]}")
+            if debug:
+                print(f"[DEBUG] Block {idx}: malformed headers\n{block}", file=sys.stderr)
             continue
 
         from_raw, from_path = _parse_header_path(from_header)
@@ -165,37 +187,51 @@ def parse_unified_diff(diff_content):
 
         if _is_null_path(to_raw):
             operations.append({'type': 'delete', 'path': from_path})
+            if debug:
+                print(f"[DEBUG] Block {idx}: delete -> {from_path}", file=sys.stderr)
         elif _is_null_path(from_raw):
             operations.append({'type': 'patch', 'path': to_path, 'is_new': True, 'diff': diff_body})
+            if debug:
+                print(f"[DEBUG] Block {idx}: create via patch -> {to_path}", file=sys.stderr)
         else:
             operations.append({'type': 'patch', 'path': to_path, 'is_new': False, 'diff': diff_body})
+            if debug:
+                print(f"[DEBUG] Block {idx}: modify -> {to_path}", file=sys.stderr)
+
+    if debug:
+        print(f"[DEBUG] parse_unified_diff: produced {len(operations)} op(s), errors={len(errors)}", file=sys.stderr)
 
     return operations, errors
 
-HUNK_HEADER_RE = re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@.*')
 
-def apply_patch(original_content, diff_text, *, debug=False, ignore_ws=False, ignore_eol=True):
-    import re, difflib
+def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True):
+    """
+    Apply a unified diff to the given original content.
+
+    - Matches tolerate EOL differences (\r\n vs \n) when ignore_eol=True.
+    - When debug=True, prints helpful diagnostics on failed hunks.
+    """
+    import difflib
 
     def file_eol(text):
         # Choose the dominant EOL of the original file, default to '\n'
         crlf = text.count('\r\n')
-        lf   = text.count('\n') - crlf
+        lf = text.count('\n') - crlf
         return '\r\n' if crlf > lf else '\n'
 
     def norm(line):
         # Normalize for comparison only (don’t mutate what we write)
         if ignore_eol:
             line = line.rstrip('\r\n')
-        if ignore_ws:
-            # collapse whitespace runs, ignore trailing spaces
-            line = re.sub(r'\s+', ' ', line).rstrip()
         return line
 
     original_lines = original_content.splitlines(True)
-    diff_lines     = diff_text.splitlines(True)
-    patched_lines  = list(original_lines)
-    target_eol     = file_eol(original_content)
+    diff_lines = diff_text.splitlines(True)
+    patched_lines = list(original_lines)
+    target_eol = file_eol(original_content)
+
+    if debug:
+        print(f"[DEBUG] apply_patch: original lines={len(original_lines)}, diff lines={len(diff_lines)}, target_eol={'CRLF' if target_eol=='\r\n' else 'LF'}", file=sys.stderr)
 
     hunk_starts = [i for i, line in enumerate(diff_lines) if line.startswith('@@ ')]
 
@@ -207,8 +243,8 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_ws=False, ig
 
         old_start = int(match.group(1))
 
-        end_index  = hunk_starts[i+1] if i + 1 < len(hunk_starts) else len(diff_lines)
-        hunk_lines = diff_lines[start_index + 1 : end_index]
+        end_index = hunk_starts[i + 1] if i + 1 < len(hunk_starts) else len(diff_lines)
+        hunk_lines = diff_lines[start_index + 1: end_index]
 
         # Build blocks
         search_lines = [ln[1:] for ln in hunk_lines if ln.startswith(' ') or ln.startswith('-')]
@@ -217,21 +253,26 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_ws=False, ig
         # Normalize EOL of lines we will insert to match the file
         insert_lines = [ln.rstrip('\r\n') + target_eol for ln in insert_lines]
 
+        if debug:
+            print(f"[DEBUG] Hunk {i+1}/{len(hunk_starts)}: header={hunk_header.strip()}, search={len(search_lines)} lines, insert={len(insert_lines)} lines", file=sys.stderr)
+
         if not search_lines:
             # Pure addition at a position (fallback to given old_start)
             insert_pos = old_start - 1 if old_start > 0 else 0
             if not patched_lines and insert_pos > 0:
                 patched_lines.extend([target_eol] * insert_pos)
             patched_lines[insert_pos:insert_pos] = insert_lines
+            if debug:
+                print(f"[DEBUG] Hunk {i+1}: pure insertion at pos {insert_pos}", file=sys.stderr)
             continue
 
-        # Exact-ish match with normalization
+        # Exact-ish match with EOL normalization
         found_at = -1
         max_j = len(patched_lines) - len(search_lines)
         for j in range(max_j + 1):
             ok = True
             for k, sline in enumerate(search_lines):
-                if norm(patched_lines[j+k]) != norm(sline):
+                if norm(patched_lines[j + k]) != norm(sline):
                     ok = False
                     break
             if ok:
@@ -239,7 +280,9 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_ws=False, ig
                 break
 
         if found_at != -1:
-            patched_lines[found_at:found_at+len(search_lines)] = insert_lines
+            if debug:
+                print(f"[DEBUG] Hunk {i+1}: matched at line {found_at+1}", file=sys.stderr)
+            patched_lines[found_at:found_at + len(search_lines)] = insert_lines
         else:
             if debug:
                 print("\n--- DEBUG: Hunk search failed ---", file=sys.stderr)
@@ -251,22 +294,29 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_ws=False, ig
                 target = [norm(l) for l in search_lines]
                 best_score, best_idx = 0.0, None
                 for j in range(max_j + 1):
-                    window = [norm(l) for l in patched_lines[j:j+len(search_lines)]]
+                    window = [norm(l) for l in patched_lines[j:j + len(search_lines)]]
                     score = difflib.SequenceMatcher(a=target, b=window).ratio()
                     if score > best_score:
                         best_score, best_idx = score, j
                 if best_idx is not None:
-                    print(f"\nClosest window starts at line {best_idx+1} (score {best_score:.3f})", file=sys.stderr)
-                    for ln in patched_lines[best_idx:best_idx+min(len(search_lines),10)]:
+                    print(f"\nClosest window starts at line {best_idx + 1} (score {best_score:.3f})", file=sys.stderr)
+                    for ln in patched_lines[best_idx:best_idx + min(len(search_lines), 10)]:
                         print("FILE:", repr(ln.rstrip('\r\n')), file=sys.stderr)
                 print("--- END DEBUG ---\n", file=sys.stderr)
 
             hunk_preview = "".join(hunk_lines[:5])
-            raise ValueError(f"Hunk #{i+1} could not be applied. Content mismatch.\n-- Hunk Preview --\n{hunk_preview}[...]")
+            raise ValueError(f"Hunk #{i + 1} could not be applied. Content mismatch.\n-- Hunk Preview --\n{hunk_preview}[...]")
 
     return "".join(patched_lines)
 
+
 def main():
+    debug = '--debug' in sys.argv
+
+    if debug:
+        print(f"[DEBUG] Platform: {sys.platform}", file=sys.stderr)
+        print(f"[DEBUG] CWD: {os.getcwd()}", file=sys.stderr)
+
     print("Attempting to read operation directives from clipboard...")
     try:
         clipboard_content = pyperclip.paste()
@@ -277,7 +327,10 @@ def main():
         print(f"Error accessing clipboard: {e}", file=sys.stderr)
         sys.exit(1)
 
-    operations, parse_errors = parse_operations(clipboard_content)
+    if debug:
+        print(f"[DEBUG] Clipboard content length: {len(clipboard_content)} chars", file=sys.stderr)
+
+    operations, parse_errors = parse_operations(clipboard_content, debug=debug)
 
     if parse_errors:
         print("\n--- Parsing Issues Detected ---", file=sys.stderr)
@@ -318,11 +371,12 @@ def main():
             else:
                 skipped_ops.append(f"SKIPPING INVALID RENAME: from '{op['from']}' to '{op['to']}'")
         elif op['type'] == 'patch':
-            patch_ops, patch_errors = parse_unified_diff(op['content'])
+            patch_ops, patch_errors = parse_unified_diff(op['content'], debug=debug)
             if patch_errors:
-                for err in patch_errors: print(f"Patch parsing error: {err}", file=sys.stderr)
+                for err in patch_errors:
+                    print(f"Patch parsing error: {err}", file=sys.stderr)
             for patch_op in patch_ops:
-                if patch_op['type'] == 'delete': # From a +++ NUL diff
+                if patch_op['type'] == 'delete':  # From a +++ NUL diff
                     deletions.append(patch_op)
                 elif is_safe_path(patch_op['path']):
                     patches.append(patch_op)
@@ -333,6 +387,13 @@ def main():
                 binaries.append(op)
             else:
                 skipped_ops.append(f"SKIPPING INVALID BINARY: {op['path']}")
+
+    if debug:
+        print(
+            f"[DEBUG] Tally -> create:{len(creations)}, delete:{len(deletions)}, rename:{len(renames)}, "
+            f"patch:{len(patches)}, binary:{len(binaries)}, skipped:{len(skipped_ops)}",
+            file=sys.stderr
+        )
 
     total_valid_ops = len(creations) + len(deletions) + len(renames) + len(patches) + len(binaries)
     if total_valid_ops == 0:
@@ -361,6 +422,11 @@ def main():
         print("Files to be Patched:")
         for op in patches:
             print(f"  - {op['path']}")
+            if debug:
+                # Tiny visibility: show first hunk header if present
+                first_line = op['diff'].splitlines()[0] if op['diff'].splitlines() else ''
+                if first_line.startswith('@@ '):
+                    print(f"    [DEBUG] first hunk: {first_line}", file=sys.stderr)
     if skipped_ops:
         print("Skipped Invalid Operations:")
         for item in skipped_ops:
@@ -435,10 +501,10 @@ def main():
             dir_path = os.path.dirname(path)
             if dir_path:
                 os.makedirs(dir_path, exist_ok=True)
-            
+
             content = op['content']
             decoded_content = base64.b64decode(content)
-            
+
             print(f"  Writing binary file: {op['path']} ({len(decoded_content)} bytes) ... ", end="")
             with open(path, 'wb') as f:
                 f.write(decoded_content)
@@ -462,9 +528,16 @@ def main():
                     continue
                 with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                     original_content = f.read()
-            
-            new_content = apply_patch(original_content, op['diff'])
-            
+
+            if debug:
+                # Show quick EOL summary for the file
+                crlf = original_content.count('\r\n')
+                lf = original_content.count('\n') - crlf
+                eol_str = 'CRLF' if crlf > lf else 'LF'
+                print(f"\n    [DEBUG] File EOL={eol_str}, original_lines={len(original_content.splitlines())}", file=sys.stderr)
+
+            new_content = apply_patch(original_content, op['diff'], debug=debug)
+
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8', newline='') as f:
                 f.write(new_content)
@@ -481,12 +554,13 @@ def main():
     print(f"  Deleted: {counts['deleted']} path(s)")
     print(f"  Renamed/Moved: {counts['renamed']} path(s)")
     if skipped_ops:
-         print(f"  Skipped invalid paths: {len(skipped_ops)} operation(s)")
+        print(f"  Skipped invalid paths: {len(skipped_ops)} operation(s)")
     if counts['errors'] > 0:
         print(f"  Encountered errors: {counts['errors']} operation(s)")
         sys.exit(1)
     else:
         print("All operations completed successfully.")
+
 
 if __name__ == "__main__":
     main()
