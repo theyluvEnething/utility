@@ -7,7 +7,7 @@ from drawing import shapes
 def game_over(screen, font, score):
     """Displays the game over screen and exits."""
     game_over_text = font.render(f"Game Over! Your Score: {score}", True, settings.TEXT_COLOR)
-    text_rect = game_over_text.get_rect(center=(settings.SCREEN_WIDTH / 2, settings.SCREEN_HEIGHT / 2))
+    text_rect = game_over_text.get_rect(center=(settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT // 2))
     screen.blit(game_over_text, text_rect)
     pygame.display.flip()
     pygame.time.wait(3000)
@@ -23,8 +23,10 @@ def main():
     font = pygame.font.Font(None, 36)
 
     # Snake initial setup
-    snake_head =
-    snake_body = [,,]
+    snake_head = [settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT // 2]
+    snake_body = [[settings.SCREEN_WIDTH // 2, settings.SCREEN_HEIGHT // 2],
+                  [settings.SCREEN_WIDTH // 2 - settings.SNAKE_BLOCK_SIZE, settings.SCREEN_HEIGHT // 2],
+                  [settings.SCREEN_WIDTH // 2 - 2 * settings.SNAKE_BLOCK_SIZE, settings.SCREEN_HEIGHT // 2]]
     direction = 'RIGHT'
     change_to = direction
 
