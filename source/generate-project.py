@@ -204,12 +204,15 @@ def parse_unified_diff(diff_content, *, debug=False):
     return operations, errors
 
 
-def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True):
+def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True, fuzzy_threshold=0.88, allow_already_applied=True):
     """
     Apply a unified diff to the given original content.
 
     - Matches tolerate EOL differences (\r\n vs \n) when ignore_eol=True.
     - When debug=True, prints helpful diagnostics on failed hunks.
+    - Fuzzy mode: if an exact window isn't found, accept the best window when the
+      similarity is >= fuzzy_threshold (0..1). Also treat an already-applied hunk
+      as success to make patches idempotent.
     """
     import difflib
 
@@ -234,6 +237,21 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True):
         print(f"[DEBUG] apply_patch: original lines={len(original_lines)}, diff lines={len(diff_lines)}, target_eol={'CRLF' if target_eol=='\r\n' else 'LF'}", file=sys.stderr)
 
     hunk_starts = [i for i, line in enumerate(diff_lines) if line.startswith('@@ ')]
+
+    def _lines_equal(a_lines, b_lines):
+        if len(a_lines) != len(b_lines):
+            return False
+        for x, y in zip(a_lines, b_lines):
+            if norm(x) != norm(y):
+                return False
+        return True
+
+    def _find_exact_window(haystack, needle):
+        max_j = len(haystack) - len(needle)
+        for j in range(max_j + 1):
+            if _lines_equal(haystack[j:j + len(needle)], needle):
+                return j
+        return -1
 
     for i, start_index in enumerate(hunk_starts):
         hunk_header = diff_lines[start_index]
@@ -266,46 +284,62 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True):
                 print(f"[DEBUG] Hunk {i+1}: pure insertion at pos {insert_pos}", file=sys.stderr)
             continue
 
-        # Exact-ish match with EOL normalization
-        found_at = -1
-        max_j = len(patched_lines) - len(search_lines)
-        for j in range(max_j + 1):
-            ok = True
-            for k, sline in enumerate(search_lines):
-                if norm(patched_lines[j + k]) != norm(sline):
-                    ok = False
-                    break
-            if ok:
-                found_at = j
-                break
-
+        # 1) Exact match first (with EOL normalization)
+        found_at = _find_exact_window(patched_lines, [l if l.endswith(('\n', '\r\n')) else (l + target_eol) for l in [s.rstrip('\r\n') for s in search_lines]])
         if found_at != -1:
             if debug:
                 print(f"[DEBUG] Hunk {i+1}: matched at line {found_at+1}", file=sys.stderr)
             patched_lines[found_at:found_at + len(search_lines)] = insert_lines
-        else:
-            if debug:
-                print("\n--- DEBUG: Hunk search failed ---", file=sys.stderr)
-                print(hunk_header.strip(), file=sys.stderr)
-                print("Expected (first 10 search lines):", file=sys.stderr)
-                for ln in search_lines[:10]:
-                    print(repr(ln.rstrip('\r\n')), file=sys.stderr)
-                # Show best near-match window using difflib
-                target = [norm(l) for l in search_lines]
-                best_score, best_idx = 0.0, None
-                for j in range(max_j + 1):
-                    window = [norm(l) for l in patched_lines[j:j + len(search_lines)]]
-                    score = difflib.SequenceMatcher(a=target, b=window).ratio()
-                    if score > best_score:
-                        best_score, best_idx = score, j
-                if best_idx is not None:
-                    print(f"\nClosest window starts at line {best_idx + 1} (score {best_score:.3f})", file=sys.stderr)
-                    for ln in patched_lines[best_idx:best_idx + min(len(search_lines), 10)]:
-                        print("FILE:", repr(ln.rstrip('\r\n')), file=sys.stderr)
-                print("--- END DEBUG ---\n", file=sys.stderr)
+            continue
 
-            hunk_preview = "".join(hunk_lines[:5])
-            raise ValueError(f"Hunk #{i + 1} could not be applied. Content mismatch.\n-- Hunk Preview --\n{hunk_preview}[...]")
+        # 2) Already-applied detection (idempotency): look for insert_lines as-is
+        if allow_already_applied:
+            already_pos = _find_exact_window(patched_lines, insert_lines)
+            if already_pos != -1:
+                if debug:
+                    print(f"[DEBUG] Hunk {i+1}: appears already applied at line {already_pos+1}; skipping.", file=sys.stderr)
+                continue
+
+        # 3) Fuzzy fallback using difflib.SequenceMatcher
+        if fuzzy_threshold is not None:
+            target = [norm(l) for l in search_lines]
+            best_score, best_idx = 0.0, None
+            max_j = len(patched_lines) - len(search_lines)
+            for j in range(max_j + 1):
+                window = [norm(l) for l in patched_lines[j:j + len(search_lines)]]
+                score = difflib.SequenceMatcher(a=target, b=window).ratio()
+                if score > best_score:
+                    best_score, best_idx = score, j
+            if best_idx is not None and best_score >= fuzzy_threshold:
+                if debug:
+                    print(f"[DEBUG] Hunk {i+1}: [FUZZ] applying near-match at line {best_idx+1} (score {best_score:.3f})", file=sys.stderr)
+                patched_lines[best_idx:best_idx + len(search_lines)] = insert_lines
+                continue
+
+        # 4) No match; emit detailed diagnostics and fail this hunk
+        if debug:
+            print("\n--- DEBUG: Hunk search failed ---", file=sys.stderr)
+            print(hunk_header.strip(), file=sys.stderr)
+            print("Expected (first 10 search lines):", file=sys.stderr)
+            for ln in search_lines[:10]:
+                print(repr(ln.rstrip('\r\n')), file=sys.stderr)
+            # Show best near-match window using difflib
+            target = [norm(l) for l in search_lines]
+            best_score, best_idx = 0.0, None
+            max_j = len(patched_lines) - len(search_lines)
+            for j in range(max_j + 1):
+                window = [norm(l) for l in patched_lines[j:j + len(search_lines)]]
+                score = difflib.SequenceMatcher(a=target, b=window).ratio()
+                if score > best_score:
+                    best_score, best_idx = score, j
+            if best_idx is not None:
+                print(f"\nClosest window starts at line {best_idx + 1} (score {best_score:.3f})", file=sys.stderr)
+                for ln in patched_lines[best_idx:best_idx + min(len(search_lines), 10)]:
+                    print("FILE:", repr(ln.rstrip('\r\n')), file=sys.stderr)
+            print("--- END DEBUG ---\n", file=sys.stderr)
+
+        hunk_preview = "".join(hunk_lines[:5])
+        raise ValueError(f"Hunk #{i + 1} could not be applied. Content mismatch.\n-- Hunk Preview --\n{hunk_preview}[...]")
 
     return "".join(patched_lines)
 
@@ -313,9 +347,34 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True):
 def main():
     debug = '--debug' in sys.argv
 
+    # Fuzzy options
+    fuzzy_threshold = 0.88  # default
+    if '--no-fuzzy' in sys.argv:
+        fuzzy_threshold = None
+    else:
+        if '--fuzzy' in sys.argv:
+            try:
+                idx = sys.argv.index('--fuzzy')
+                fuzzy_threshold = float(sys.argv[idx + 1])
+                if not (0.0 <= fuzzy_threshold <= 1.0):
+                    raise ValueError
+            except Exception:
+                print("Warning: invalid --fuzzy value; using default 0.88", file=sys.stderr)
+                fuzzy_threshold = 0.88
+
+    # Backups are on by default for safety; you can disable with --no-backup
+    backup_patched = False
+    if '--backup' in sys.argv:
+        backup_patched = True
+
     if debug:
         print(f"[DEBUG] Platform: {sys.platform}", file=sys.stderr)
         print(f"[DEBUG] CWD: {os.getcwd()}", file=sys.stderr)
+        if fuzzy_threshold is None:
+            print("[DEBUG] Fuzzy patching: DISABLED", file=sys.stderr)
+        else:
+            print(f"[DEBUG] Fuzzy patching threshold: {fuzzy_threshold}", file=sys.stderr)
+        print(f"[DEBUG] Backups before patch: {'ENABLED' if backup_patched else 'DISABLED'}", file=sys.stderr)
 
     print("Attempting to read operation directives from clipboard...")
     try:
@@ -517,7 +576,7 @@ def main():
     for op in patches:
         try:
             path = os.path.join(target_directory, os.path.normpath(op['path']))
-            if op['is_new']:
+            if op.get('is_new'):
                 print(f"  Applying patch to create: {op['path']} ... ", end="")
                 original_content = ""
             else:
@@ -536,15 +595,40 @@ def main():
                 eol_str = 'CRLF' if crlf > lf else 'LF'
                 print(f"\n    [DEBUG] File EOL={eol_str}, original_lines={len(original_content.splitlines())}", file=sys.stderr)
 
-            new_content = apply_patch(original_content, op['diff'], debug=debug)
+            new_content = apply_patch(
+                original_content,
+                op['diff'],
+                debug=debug,
+                fuzzy_threshold=fuzzy_threshold,
+                allow_already_applied=True
+            )
 
             os.makedirs(os.path.dirname(path), exist_ok=True)
+
+            # Backup before writing
+            try:
+                if backup_patched and os.path.exists(path):
+                    backup_path = path + ".bak"
+                    shutil.copyfile(path, backup_path)
+                    if debug:
+                        print(f"    [DEBUG] Backup saved to {backup_path}", file=sys.stderr)
+            except Exception as be:
+                print(f"\nWarning: could not create backup for {op['path']}: {be}", file=sys.stderr)
+
             with open(path, 'w', encoding='utf-8', newline='') as f:
                 f.write(new_content)
             print("Done.")
             counts['patched'] += 1
         except (OSError, IOError, ValueError) as e:
             print(f"\nError applying patch to {op['path']}: {e}")
+            # Write reject file for inspection
+            try:
+                rej_path = path + ".rej"
+                with open(rej_path, 'w', encoding='utf-8', newline='') as rf:
+                    rf.write(op['diff'])
+                print(f"  Wrote reject diff to: {rej_path}")
+            except Exception as re_err:
+                print(f"  (Also failed to write .rej file: {re_err})", file=sys.stderr)
             counts['errors'] += 1
 
     print("-" * 40)
