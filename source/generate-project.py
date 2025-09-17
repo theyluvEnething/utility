@@ -357,6 +357,238 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True, fu
 
     return "".join(patched_lines)
 
+def run_from_directives_text(directives_text, *, debug=False, fuzzy_threshold=0.88, backup=False):
+    debug = bool(debug)
+    if fuzzy_threshold is not None:
+        try:
+            fuzzy_threshold = float(fuzzy_threshold)
+        except Exception:
+            fuzzy_threshold = 0.88
+    backup_patched = bool(backup)
+
+    clipboard_content = decodeBrackets(directives_text)
+
+    if (DEBUG): print(clipboard_content)
+
+    operations, parse_errors = parse_operations(clipboard_content, debug=debug)
+
+    if parse_errors:
+        print("\n--- Parsing Issues Detected ---", file=sys.stderr)
+        for error in parse_errors:
+            print(error, file=sys.stderr)
+        print("-------------------------------\n", file=sys.stderr)
+
+    if not operations:
+        print("Error: Could not parse any valid operations from the provided content.", file=sys.stderr)
+        return 1
+
+    target_directory = os.getcwd()
+    print(f"\nOperations will be executed in: {target_directory}")
+    print("-" * 40)
+
+    creations = []
+    deletions = []
+    renames = []
+    patches = []
+    binaries = []
+    skipped_ops = []
+
+    for op in operations:
+        if op['type'] == 'create':
+            if is_safe_path(op['path']):
+                creations.append(op)
+            else:
+                skipped_ops.append(f"SKIPPING INVALID CREATE/UPDATE: {op['path']}")
+        elif op['type'] == 'delete':
+            if is_safe_path(op['path']):
+                deletions.append(op)
+            else:
+                skipped_ops.append(f"SKIPPING INVALID DELETE: {op['path']}")
+        elif op['type'] == 'rename':
+            if is_safe_path(op['from']) and is_safe_path(op['to']):
+                renames.append(op)
+            else:
+                skipped_ops.append(f"SKIPPING INVALID RENAME: from '{op['from']}' to '{op['to']}'")
+        elif op['type'] == 'patch':
+            patch_ops, patch_errors = parse_unified_diff(op['content'], debug=debug)
+            if patch_errors:
+                for err in patch_errors:
+                    print(f"Patch parsing error: {err}", file=sys.stderr)
+            for patch_op in patch_ops:
+                if patch_op['type'] == 'delete':
+                    deletions.append(patch_op)
+                elif is_safe_path(patch_op['path']):
+                    patches.append(patch_op)
+                else:
+                    skipped_ops.append(f"SKIPPING INVALID PATCH: {patch_op['path']}")
+        elif op['type'] == 'binary':
+            if is_safe_path(op['path']):
+                binaries.append(op)
+            else:
+                skipped_ops.append(f"SKIPPING INVALID BINARY: {op['path']}")
+
+    total_valid_ops = len(creations) + len(deletions) + len(renames) + len(patches) + len(binaries)
+    if total_valid_ops == 0:
+        print("No valid operations to perform after filtering for safe paths.")
+        for item in skipped_ops:
+            print(f"  - {item}")
+        return 0
+
+    if renames:
+        print("Files to be Renamed / Moved:")
+        for op in renames:
+            print(f"  - FROM: {op['from']}\n    TO:   {op['to']}")
+    if deletions:
+        print("Files/Dirs to be Deleted:")
+        for op in deletions:
+            print(f"  - {op['path']}")
+    if creations:
+        print("Files to be Created / Overwritten:")
+        for op in creations:
+            print(f"  - {op['path']}")
+    if binaries:
+        print("Binary files to be Created / Overwritten:")
+        for op in binaries:
+            print(f"  - {op['path']}")
+    if patches:
+        print("Files to be Patched:")
+        for op in patches:
+            print(f"  - {op['path']}")
+            if debug:
+                first_line = op['diff'].splitlines()[0] if op['diff'].splitlines() else ''
+                if first_line.startswith('@@ '):
+                    print(f"    [DEBUG] first hunk: {first_line}", file=sys.stderr)
+    if skipped_ops:
+        print("Skipped Invalid Operations:")
+        for item in skipped_ops:
+            print(f"  - {item}")
+    print("-" * 40)
+
+    print("\nStarting execution...")
+    counts = {'renamed': 0, 'deleted': 0, 'created': 0, 'patched': 0, 'binary': 0, 'errors': 0}
+
+    for op in renames:
+        try:
+            from_path = os.path.join(target_directory, os.path.normpath(op['from']))
+            to_path = os.path.join(target_directory, os.path.normpath(op['to']))
+            print(f"  Renaming: {op['from']} -> {op['to']} ... ", end="")
+            os.makedirs(os.path.dirname(to_path), exist_ok=True)
+            os.rename(from_path, to_path)
+            print("Done.")
+            counts['renamed'] += 1
+        except (OSError, IOError) as e:
+            print(f"\nError renaming file: {e}")
+            counts['errors'] += 1
+
+    for op in deletions:
+        try:
+            path = os.path.join(target_directory, os.path.normpath(op['path']))
+            print(f"  Deleting: {op['path']} ... ", end="")
+            if os.path.exists(path):
+                if os.path.islink(path) or os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    print("Skipped (unknown file type).")
+                    counts['deleted'] += 1
+                    continue
+                print("Done.")
+            else:
+                print("Skipped (not found).")
+            counts['deleted'] += 1
+        except (OSError, IOError, PermissionError) as e:
+            print(f"\nError deleting file or directory: {e}")
+            counts['errors'] += 1
+
+    for op in creations:
+        try:
+            path = os.path.join(target_directory, os.path.normpath(op['path']))
+            dir_path = os.path.dirname(path)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
+            print(f"  Writing file: {op['path']} ({len(op['content'])} bytes) ... ", end="")
+            with open(path, 'w', encoding='utf-8', newline='') as f:
+                f.write(op['content'])
+            print("Done.")
+            counts['created'] += 1
+        except (OSError, IOError) as e:
+            print(f"\nError writing file: {e}")
+            counts['errors'] += 1
+
+    for op in binaries:
+        try:
+            path = os.path.join(target_directory, os.path.normpath(op['path']))
+            dir_path = os.path.dirname(path)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
+
+            content = op['content']
+            decoded_content = base64.b64decode(content)
+
+            print(f"  Writing binary file: {op['path']} ({len(decoded_content)} bytes) ... ", end="")
+            with open(path, 'wb') as f:
+                f.write(decoded_content)
+            print("Done.")
+            counts['binary'] += 1
+        except (OSError, IOError, base64.binascii.Error) as e:
+            print(f"\nError writing binary file: {e}")
+            counts['errors'] += 1
+
+    for op in patches:
+        try:
+            path = os.path.join(target_directory, os.path.normpath(op['path']))
+            if op.get('is_new'):
+                print(f"  Applying patch to create: {op['path']} ... ", end="")
+                original_content = ""
+            else:
+                print(f"  Applying patch to modify: {op['path']} ... ", end="")
+                if not os.path.exists(path):
+                    print(f"Skipped (not found).")
+                    counts['errors'] += 1
+                    continue
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                    original_content = f.read()
+
+            new_content = apply_patch(
+                original_content,
+                op['diff'],
+                debug=debug,
+                fuzzy_threshold=fuzzy_threshold,
+                allow_already_applied=True
+            )
+
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+
+            try:
+                if backup_patched and os.path.exists(path):
+                    backup_path = path + ".bak"
+                    shutil.copyfile(path, backup_path)
+            except Exception as be:
+                print(f"\nWarning: could not create backup for {op['path']}: {be}", file=sys.stderr)
+
+            with open(path, 'w', encoding='utf-8', newline='') as f:
+                f.write(new_content)
+            print("Done.")
+            counts['patched'] += 1
+        except (OSError, IOError, ValueError) as e:
+            print(f"\nError applying patch to {op['path']}: {e}")
+            counts['errors'] += 1
+
+    print("-" * 40)
+    print("Execution finished.")
+    print(f"  Created/Written: {counts['created']} text, {counts['binary']} binary")
+    print(f"  Patched: {counts['patched']} file(s)")
+    print(f"  Deleted: {counts['deleted']} path(s)")
+    print(f"  Renamed/Moved: {counts['renamed']} path(s)")
+    if skipped_ops:
+        print(f"  Skipped invalid paths: {len(skipped_ops)} operation(s)")
+    if counts['errors'] > 0:
+        print(f"  Encountered errors: {counts['errors']} operation(s)")
+        return 1
+    else:
+        print("All operations completed successfully.")
+        return 0
 
 def main():
     # Baseline from top-level defaults; allow one-off overrides via CLI flags
