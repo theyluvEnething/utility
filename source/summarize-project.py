@@ -36,9 +36,27 @@ DEFAULT_IGNORED_FILENAMES = {
     'LICENSE', 'LICENCE', 'README.md', 'CONTRIBUTING.md', 'CHANGELOG.md'
 }
 
+# --- Load extra programming context and make it available to the system prompt ---
+
+def load_programming_context(path="programming_context.txt"):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"Warning: '{path}' not found. Proceeding without extra programming context.", file=sys.stderr)
+        return ""
+    except Exception as e:
+        print(f"Warning: Could not read '{path}': {e}. Proceeding without extra programming context.", file=sys.stderr)
+        return ""
+
+def cdata_escape(text: str) -> str:
+    # Safely embed arbitrary text inside CDATA by splitting any ']]>' sequence.
+    return text.replace("]]>", "]]]]><![CDATA[>")
+
+PROGRAMMING_CONTEXT = load_programming_context()
+PROGRAMMING_CONTEXT_CDATA = cdata_escape(PROGRAMMING_CONTEXT)
 
 SYSTEM_PROMPT = r"""<SYSTEM_PROMPT>
-</ROLE_DEFINITION>
 
 <identity>
 You are an AI coding assistant, powered by GPT-5, operating inside Cursor. You are pair-programming with the USER and act as an autonomous agent: continue working until the USER’s request is fully resolved before yielding. Default to taking initiative and only pause when truly blocked.
@@ -78,6 +96,29 @@ Before any implementation:
 - Only after the plan is fully formed, proceed to implementation.
 - During implementation, revise the plan if reality differs and OMIT any redundant or placeholder edits; do not emit no-op diffs.
 </planning_and_error_reasoning>
+
+<VECTOR_MOVEMENT_REWRITE_RULE>
+Trigger condition:
+- Root cause involves adding/subtracting an int to/from a 2D position represented as a list/tuple (e.g., head = [x, y] or (x, y)).
+
+Mandatory rewrite:
+- Replace any whole-sequence arithmetic with component-wise updates:
+  - UP:    head[1] -= STEP
+  - DOWN:  head[1] += STEP
+  - LEFT:  head[0] -= STEP
+  - RIGHT: head[0] += STEP
+- Insert body segments by value, not reference: body.insert(0, [head[0], head[1]])
+- Rect construction must be coordinates, not tuples: Rect(head[0], head[1], W, H)
+- Bounds check must be component-wise:
+  0 <= head[0] < SCREEN_WIDTH  and  0 <= head[1] < SCREEN_HEIGHT
+
+Planning requirements:
+- Locate the variable’s initialization and every read/write site.
+- List exact lines to edit and the exact token changes you will make.
+
+Emission guard (class-specific):
+- If this rule is triggered, at least one edited line MUST introduce “[0]” or “[1]” in the movement section, OR change a tuple-arg Rect call to scalar coords. If not present, revisit the plan; do not emit a placeholder diff. If BASE alignment is uncertain, emit a <file> replacement for that target.
+</VECTOR_MOVEMENT_REWRITE_RULE>
 
 <change_output_protocol>
 When the USER asks you to return code edits, output only Operation Directives using the blocks below—no extra prose. Prefer `<patch>` for small/targeted changes; prefer `<file>` when ~40%+ of a file changes or when BASE cannot be reliably matched.
@@ -247,10 +288,20 @@ If code contains inline “Lxxx:” prefixes, treat them as metadata; do not inc
 - Every +/- line must change more than whitespace. Remove redundant/placeholder hunks.
 - Ensure at least one semantic token change across the response; otherwise, revisit planning.
 - Keep changes strictly within scope; bug fixes from provided errors/stack traces are explicitly in scope.
+- If the detected bug is a scalar/sequence mismatch for a 2D position, the modified lines MUST include “[0]” or “[1]” in the movement logic and use scalar x,y in any Rect construction; otherwise, revisit planning or emit a `<file>` replacement for that target.
 </quality_gates>
 
 </SYSTEM_PROMPT>"""
 
+
+# This block is appended to the system prompt at runtime so it remains part of the "system" section.
+PROGRAMMING_CONTEXT_BLOCK = (
+    "\n<PROGRAMMING_CONTEXT>\n"
+    "<!-- Expert Programming Mechanics & Techniques provided by the USER. "
+    "Treat as authoritative guidance unless a request explicitly overrides it. -->\n"
+    "<![CDATA[\n" + PROGRAMMING_CONTEXT_CDATA + "\n]]>\n"
+    "</PROGRAMMING_CONTEXT>\n"
+)
 
 USER_PROMPT_INTRO = """<USER>
 
@@ -459,7 +510,8 @@ def main():
     print("-" * 30)
 
     # --- Assemble the final prompt using the new structure ---
-    final_output_parts = [SYSTEM_PROMPT, "\n\n", USER_PROMPT_INTRO]
+    # We inject PROGRAMMING_CONTEXT_BLOCK right after the SYSTEM_PROMPT so it is part of the "system" section.
+    final_output_parts = [SYSTEM_PROMPT, PROGRAMMING_CONTEXT_BLOCK, "\n\n", USER_PROMPT_INTRO]
 
     if tree_structure_str:
         final_output_parts.append("\n--- Project Directory Tree ---\n")
@@ -476,6 +528,10 @@ def main():
         try:
             pyperclip.copy(final_output)
             print(f"Successfully processed {file_count} files and included the directory tree.")
+            if PROGRAMMING_CONTEXT:
+                print("Included programming_context.txt as PROGRAMMING_CONTEXT in the system prompt.")
+            else:
+                print("No programming_context.txt content included.")
             print("Full context prompt has been copied to the clipboard!")
         except pyperclip.PyperclipException as e:
             print(f"\nError: Could not copy to clipboard: {e}", file=sys.stderr)
