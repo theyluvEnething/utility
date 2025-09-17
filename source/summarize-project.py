@@ -68,6 +68,15 @@ You are an AI coding assistant, powered by GPT-5, operating inside Vibe-Code. Yo
 - If a renderer might mangle text, put the content inside code fences or CDATA.
 </bracket_output_rule>
 
+<output_envelope>
+- Every assistant response MUST be wrapped exactly as follows:
+  1) First line: code
+  2) Second line: ```
+  3) Content goes here
+  4) Last line: ```
+- Do not output anything before the word "code" or after the closing ```.
+</output_envelope>
+
 <context_intake_protocol>
 The USER may provide full project context (directory tree + file contents). Files are provided in the exact XML-style format:
 
@@ -297,9 +306,11 @@ If code contains inline “Lxxx:” prefixes, treat them as metadata; do not inc
 - If the detected bug is a scalar/sequence mismatch for a 2D position, the modified lines MUST include “[0]” or “[1]” in the movement logic and use scalar x,y in any Rect construction; otherwise, revisit planning or emit a `<file>` replacement for that target.
 - Bracket integrity: if movement/Rect lines are present, ensure occurrences like pos[0], pos[1] appear literally (not placeholders or removed).
 - Reject any edit where a tuple arg (pos, pos) remains instead of scalar coords (pos[0], pos[1]).
+- Envelope integrity: first line must be "code"; second line must be ```; final line must be ```.
 </quality_gates>
 
 </SYSTEM_PROMPT>"""
+
 
 # This block is appended to the system prompt at runtime so it remains part of the "system" section.
 PROGRAMMING_CONTEXT_BLOCK = (

@@ -74,6 +74,7 @@ def main():
             random.randrange(0, SCREEN_HEIGHT // SNAKE_BLOCK_SIZE) * SNAKE_BLOCK_SIZE,
         ]
         score = 0
+        hue_shift = 0
 
         while True:
             for event in pygame.event.get():
@@ -115,13 +116,18 @@ def main():
             else:
                 snake_body.pop()
 
+            hue_shift = (hue_shift + 1) % 360
+
             # Draw
             screen.fill(BACKGROUND_COLOR)
             draw_grid(screen)
 
-            for pos in snake_body:
+            for i, pos in enumerate(snake_body):
+                color = pygame.Color(0)
+                hue = (hue_shift + i * 5) % 360
+                color.hsva = (hue, 100, 100, 100)
                 rect = pygame.Rect(pos[0], pos[1], SNAKE_BLOCK_SIZE, SNAKE_BLOCK_SIZE)
-                draw_rectangle(screen, SNAKE_COLOR, rect)
+                draw_rectangle(screen, color, rect)
 
             food_rect = pygame.Rect(food_pos[0], food_pos[1], SNAKE_BLOCK_SIZE, SNAKE_BLOCK_SIZE)
             draw_rectangle(screen, FOOD_COLOR, food_rect)
