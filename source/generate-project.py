@@ -14,6 +14,16 @@ except ImportError:
     print("pip install pyperclip", file=sys.stderr)
     sys.exit(1)
 
+
+# -----------------------------
+# Bracket helpers (ported from JS)
+# -----------------------------
+def encodeBrackets(s: str) -> str:
+    return s.replace('[', "|||LBR|||").replace(']', "|||RBR|||")
+
+def decodeBrackets(s: str) -> str:
+    return s.replace("|||LBR|||", "[").replace("|||RBR|||", "]")
+
 # -----------------------------
 # Patterns for directive blocks
 # -----------------------------
@@ -388,6 +398,8 @@ def main():
 
     if debug:
         print(f"[DEBUG] Clipboard content length: {len(clipboard_content)} chars", file=sys.stderr)
+
+    clipboard_content = decodeBrackets(clipboard_content)
 
     operations, parse_errors = parse_operations(clipboard_content, debug=debug)
 
