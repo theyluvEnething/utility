@@ -1,0 +1,411 @@
+Ultra-Concise, Expert-Focused Programming Mechanics & Techniques (Python-centric)
+
+Core Semantics
+- Names & bindings: Variables are references to objects; assignment rebinds names, not copies. a = b aliases; use copy.copy / copy.deepcopy for structural copies.
+- Mutability: int, float, str, tuple, frozenset are immutable; list, dict, set, bytearray mutable. Mutating affects all aliases.
+- Truthiness: 0, 0.0, "", [], {}, set(), None are Falsey; everything else Truey. Prefer if x: over if len(x) > 0:.
+- Identity vs equality: is checks object identity; == checks value equality. Use is None / is not None for sentinels.
+- Hashability: Dict/set keys must be hashable and have stable __hash__ consistent with __eq__.
+- Numeric ops: // is floor division; / is true division; beware negative floor: -3 // 2 == -2. Use math.isclose for floats.
+
+Data Types & Collections
+- List: Dynamic array (amortized O(1) append), O(n) insert/delete in middle. list + list concatenates; cannot add int to list/tuple—index then modify: a[i] += 1.
+- Tuple: Immutable sequence; packing/unpacking; good dict keys when elements are hashable.
+- Dict: Insertion-ordered (Py ≥3.7). Average O(1) get/set; collisions degrade. Prefer dict.get(k, default) and setdefault.
+- Set/Frozenset: Hash table of unique keys. in O(1) average. Use for membership, dedupe.
+- Deque (collections): O(1) append/pop both ends. Ideal queue.
+- Heap (heapq): Binary min-heap; push/pop O(log n). For max-heap, push (-key, item).
+- Array (array) / NumPy ndarray: Dense homogenous storage; vectorized ops. Prefer for numeric performance.
+
+Strings & Bytes
+- Strings: Immutable Unicode. Build via ''.join(list_of_chunks) is O(n). Slicing O(k) copy.
+- Bytes/bytearray: For binary I/O; bytearray mutable, enables in-place transforms.
+- Encoding: Always specify encoding for I/O (encoding='utf-8').
+
+Iteration & Comprehensions
+- Iterables vs iterators: Iterator has __next__; exhausted once. Use itertools for combinators.
+- Comprehensions: [], {}, {k:v}; generator expressions are lazy: (f(x) for x in xs).
+- Enumeration & zipping: for i, x in enumerate(xs, start=0); zip truncates to shorter.
+
+Functions & Call Semantics
+- Positional-only / keyword-only: def f(a, /, b, *, c): ... clarifies API.
+- Default args: Evaluated at def time; never use mutable defaults. Do def f(x=None): x = [] if x is None else x.
+- Closures: Capture by name; loop-variable late binding—fix via default arg: lambda i=i: i.
+- Higher-order: Functions are first-class; pass/return; use decorators for cross-cutting concerns.
+
+Exceptions & Control Flow
+- EAFP vs LBYL: Prefer try/except for racey conditions. Keep except narrow: except KeyError:.
+- Context managers: Guarantee cleanup. Implement with __enter__/__exit__ or contextlib.contextmanager.
+
+Modules, Packages, Imports
+- Relative imports: Only within packages. Avoid circular imports—extract interfaces; late-import inside functions if needed.
+- __all__: Control API surface for from pkg import * (rarely recommended).
+
+Typing (Static Hints)
+- Type hints: list[int], dict[str, float]; typing.Protocol for structural typing; TypedDict for dict shapes.
+- @overload: Multiple signatures for a single implementation.
+- Final, Literal, Annotated: Express constants, enums, metadata.
+- Runtime checks: Use isinstance, not type hints. Leverage mypy, pyright.
+
+Object-Oriented Design
+- @dataclass: Auto __init__/__repr__/__eq__; frozen=True for immutability; slots=True to reduce memory.
+- Inheritance vs composition: Favor composition. If inheriting, know MRO (C3) and super().
+- Protocols / ABCs: Define behaviors without inheritance coupling.
+
+Concurrency & Parallelism
+- GIL: CPU-bound → multiprocessing or native extensions; I/O-bound → asyncio or threads.
+- Threads: Use Lock/RLock/Semaphore/Condition/Event. Avoid shared mutable state; use queue.Queue for comms.
+- asyncio: async def, await, async with/for; never block the loop; CPU work via run_in_executor.
+- Processes: multiprocessing.Pool; mind pickleability and copy-on-write.
+- Pitfalls: Deadlock, livelock, starvation; order locks, use timeouts, prefer immutability.
+
+I/O & Files
+- Buffered I/O: with open(path, mode, encoding) as f: ... Stream large files.
+- Memory-mapped I/O: mmap for large random-access.
+- Serialization: json (text), pickle (Python-only, unsafe), msgpack/protobuf (binary, fast, schema’d).
+
+Networking
+- Sockets: TCP streams; UDP datagrams. Use non-blocking/async for scale. Handle partial sends/receives.
+- HTTP clients: requests (sync), httpx/aiohttp (async). Set timeouts, retries, backoff; respect idempotency.
+
+Testing & Quality
+- Unit tests: pytest fixtures/parametrize. Separate pure logic for testability.
+- Property-based: hypothesis to generate edge cases.
+- Static analysis: ruff/flake8, black, isort, mypy/pyright. Run in CI.
+- Profiling: cProfile, line_profiler, time.perf_counter(). Optimize hotspots, not guesses.
+
+Performance & Complexity
+- Big-O basics: O(1), O(log n), O(n), O(n log n), O(n^2), O(2^n). Space complexity matters.
+- Micro-opts: Use local variables; avoid attr lookups in hot loops; vectorize with NumPy; use C-accelerated libs.
+- Caching: functools.lru_cache(maxsize=...) for pure functions.
+
+Security Essentials
+- Never eval untrusted input. Validate/escape. Use parameterized SQL. Hash passwords with bcrypt/scrypt/argon2.
+- Secrets: Load from env/secret manager; never commit. Rotate keys. Least privilege.
+
+Pygame Snippet Notes (Input Handling)
+- Event loop must drain queue each frame. Use KEYDOWN with direction guard to avoid 180° reversal.
+- Prefer mapping to reduce branching:
+    key_map = {pygame.K_UP:'UP', pygame.K_w:'UP', pygame.K_DOWN:'DOWN', pygame.K_s:'DOWN',
+               pygame.K_LEFT:'LEFT', pygame.K_a:'LEFT', pygame.K_RIGHT:'RIGHT', pygame.K_d:'RIGHT'}
+    if event.type == pygame.KEYDOWN:
+        cand = key_map.get(event.key)
+        if cand and {('UP','DOWN'),('LEFT','RIGHT')} not in {(cand, direction), (direction, cand)}:
+            change_to = cand
+- Position init centers snake head: snake_head = [W//2, H//2]. List chosen for mutability (in-place updates).
+
+Common Pitfalls (Python)
+- Cannot add scalars to sequences: [] + 1 → TypeError. Index elements: a[i] += 1. For NumPy arrays, a + 1 broadcasts.
+- Mutable defaults: see above.
+- Loop variable capture: lambdas in loops need i=i.
+- Shallow vs deep copy: list(x)/x[:] shallow; nested structures aliased.
+- list *= n with nested lists replicates references; use comprehension for independent copies: [[] for _ in range(n)].
+
+Data Structures (Essentials)
+- Array/List: Random access O(1), end-append amortized O(1), middle insert/delete O(n).
+- Linked List (singly): Insert/delete head O(1), search O(n), no random access.
+- Stack: LIFO via list.append/pop() O(1).
+- Queue/Deque: FIFO via collections.deque O(1) ends.
+- Priority Queue (Heap): heapq.heappush/pop O(log n). Decrease-key via pushing new pair + lazy delete.
+- Hash Map/Set: Average O(1) ops; worst O(n). Requires good hash, low load factor.
+- Ordered Map: Tree-based typical O(log n). Python lacks built-in; use bisect on parallel lists or sortedcontainers.
+- Union-Find (Disjoint Set): Path compression + union by rank → α(n) amortized.
+    def uf(n):
+        p=list(range(n)); r=[0]*n
+        def f(x):
+            while p[x]!=x:
+                p[x]=p[p[x]]; x=p[x]
+            return x
+        def u(a,b):
+            a,b=f(a),f(b)
+            if a==b: return False
+            if r[a]<r[b]: a,b=b,a
+            p[b]=a; r[a]+=r[a]==r[b]; return True
+        return f,u
+- Segment Tree (iterative, point-update/range-query):
+    class SegTree:
+        def __init__(s,a,op=max,e=float('-inf')):
+            n=1
+            while n<len(a): n<<=1
+            s.n=n; s.e=e; s.op=op
+            s.t=[e]*(2*n); s.t[n:n+len(a)]=a
+            for i in range(n-1,0,-1): s.t[i]=op(s.t[i<<1],s.t[i<<1|1])
+        def update(s,i,v):
+            i+=s.n; s.t[i]=v
+            i>>=1
+            while i: s.t[i]=s.op(s.t[i<<1],s.t[i<<1|1]); i>>=1
+        def query(s,l,r):  # [l,r)
+            resl, resr = s.e, s.e
+            l+=s.n; r+=s.n
+            while l<r:
+                if l&1: resl=s.op(resl,s.t[l]); l+=1
+                if r&1: r-=1; resr=s.op(s.t[r],resr)
+                l>>=1; r>>=1
+            return s.op(resl,resr)
+- Fenwick Tree (BIT):
+    class BIT:
+        def __init__(s,n): s.n=n; s.b=[0]*(n+1)
+        def add(s,i,delta):
+            i+=1
+            while i<=s.n: s.b[i]+=delta; i+=i&-i
+        def sum(s,i):  # prefix [0,i)
+            res=0
+            while i>0: res+=s.b[i]; i-=i&-i
+            return res
+        def range_sum(s,l,r): return s.sum(r)-s.sum(l)
+- Sparse Table (idempotent RMQ): Preprocess O(n log n), query O(1), static arrays.
+- Trie: Insert/search O(L) per word; memory-heavy.
+- Bloom Filter: Probabilistic set with FP rate; O(k) hash inserts, no deletions (unless counting bloom).
+
+Core Algorithms (Representative Snippets)
+- Binary Search (lower_bound):
+    def lower_bound(a,x):
+        lo,hi=0,len(a)
+        while lo<hi:
+            mid=(lo+hi)//2
+            if a[mid]<x: lo=mid+1
+            else: hi=mid
+        return lo
+- BFS / DFS:
+    from collections import deque
+    def bfs(adj,s):
+        q=deque([s]); seen={s}
+        while q:
+            v=q.popleft()
+            for w in adj[v]:
+                if w not in seen:
+                    seen.add(w); q.append(w)
+    def dfs(adj,v,seen=None):
+        if seen is None: seen=set()
+        seen.add(v)
+        for w in adj[v]:
+            if w not in seen: dfs(adj,w,seen)
+- Dijkstra (heap):
+    import heapq
+    def dijkstra(adj, s):
+        dist={s:0}; pq=[(0,s)]
+        while pq:
+            d,v=heapq.heappop(pq)
+            if d!=dist.get(v,1e300): continue
+            for w,c in adj[v]:
+                nd=d+c
+                if nd<dist.get(w,1e300):
+                    dist[w]=nd; heapq.heappush(pq,(nd,w))
+        return dist
+- Topological Sort (Kahn):
+    from collections import deque, defaultdict
+    def topo(n, edges):
+        indeg=[0]*n; g=defaultdict(list)
+        for u,v in edges: g[u].append(v); indeg[v]+=1
+        q=deque([i for i in range(n) if indeg[i]==0]); out=[]
+        while q:
+            u=q.popleft(); out.append(u)
+            for v in g[u]:
+                indeg[v]-=1
+                if indeg[v]==0: q.append(v)
+        return out if len(out)==n else None
+- Union-Find usage (Kruskal MST):
+    def mst_kruskal(n, edges):
+        edges.sort(key=lambda e:e[2])
+        f,u=uf(n); cost=0; used=[]
+        for a,b,w in edges:
+            if u(a,b): cost+=w; used.append((a,b,w))
+        return cost, used
+- String Search (KMP prefix function):
+    def prefix(s):
+        pi=[0]*len(s)
+        j=0
+        for i in range(1,len(s)):
+            while j and s[i]!=s[j]: j=pi[j-1]
+            if s[i]==s[j]: j+=1
+            pi[i]=j
+        return pi
+
+Dynamic Programming (Patterns, Ultra-Brief)
+1) Top-Down Memo (Fibonacci template):
+    from functools import lru_cache
+    @lru_cache(maxsize=None)
+    def F(n):
+        if n<2: return n
+        return F(n-1)+F(n-2)
+2) Bottom-Up 1D (Climbing Stairs):
+    def ways(n):
+        a,b=1,1
+        for _ in range(n): a,b=b,a+b
+        return a
+3) 0/1 Knapsack (1D compression):
+    def knap(W, wt, val):
+        dp=[0]*(W+1)
+        for w,v in zip(wt,val):
+            for c in range(W, w-1, -1):
+                dp[c]=max(dp[c], dp[c-w]+v)
+        return dp[W]
+4) Unbounded Knapsack / Coin Change:
+    def coin_change(target, coins):
+        dp=[0]+[10**9]*target
+        for c in coins:
+            for t in range(c, target+1):
+                dp[t]=min(dp[t], dp[t-c]+1)
+        return dp[target] if dp[target]<10**9 else -1
+5) LIS O(n log n):
+    import bisect
+    def lis(a):
+        tails=[]
+        for x in a:
+            i=bisect.bisect_left(tails,x)
+            if i==len(tails): tails.append(x)
+            else: tails[i]=x
+        return len(tails)
+6) Grid Min Path Sum (2D → 1D):
+    def min_path(grid):
+        m,n=len(grid),len(grid[0])
+        dp=[10**9]*n; dp[0]=0
+        for i in range(m):
+            dp[0]+=grid[i][0]
+            for j in range(1,n):
+                dp[j]=min(dp[j], dp[j-1])+grid[i][j]
+        return dp[-1]
+7) Interval DP (MCM/Burst Balloons flavor):
+    def interval_dp(a):
+        n=len(a); dp=[[0]*n for _ in range(n)]
+        for L in range(2,n+1):
+            for i in range(n-L+1):
+                j=i+L-1
+                best=0
+                for k in range(i+1,j):
+                    best=max(best, dp[i][k]+dp[k][j]+a[i]*a[k]*a[j])
+                dp[i][j]=best
+        return dp[0][n-1]
+8) Tree DP (post-order):
+    import sys
+    sys.setrecursionlimit(1<<20)
+    def tree_dp(n, g):
+        dp=[1]*n
+        def dfs(u,p):
+            for v in g[u]:
+                if v==p: continue
+                dfs(v,u)
+                dp[u]*=(dp[v]+1)
+        dfs(0,-1); return dp
+9) Bitmask DP (TSP):
+    def tsp(dist):
+        n=len(dist); INF=10**9
+        dp=[[INF]*n for _ in range(1<<n)]
+        dp[1][0]=0
+        for m in range(1<<n):
+            for u in range(n):
+                if not (m>>u)&1: continue
+                cu=dp[m][u]
+                for v in range(n):
+                    if (m>>v)&1: continue
+                    nm=m|1<<v
+                    if dp[nm][v]>cu+dist[u][v]:
+                        dp[nm][v]=cu+dist[u][v]
+        return min(dp[(1<<n)-1][i]+dist[i][0] for i in range(n))
+10) Digit DP (count by digits):
+    from functools import lru_cache
+    def count_leq(N):
+        s=str(N)
+        @lru_cache(None)
+        def dp(i, tight, started):
+            if i==len(s): return int(started)
+            limit=int(s[i]) if tight else 9
+            res=0
+            for d in range(0, limit+1):
+                res+=dp(i+1, tight and d==limit, started or d!=0)
+            return res
+        return dp(0, True, False)
+11) Probabilistic DP: Replace max/sum transitions with weighted sums by probability; ensure linearity and base cases.
+12) Meet-in-the-Middle: Split set; enumerate subset sums halves O(2^(n/2)), then two-pointer/binary search.
+
+Math & Bit Tricks
+- Bit ops: x & -x isolates lowest set bit; x & (x-1) clears it. Popcount: bin(x).count('1') or int.bit_count().
+- Mod arith: Normalize with % mod; modular inverse via pow(a, -1, mod) (Py ≥3.8).
+- Geometry: Cross(b-a, c-a) sign for orientation; sweep-lines for intervals/segments.
+
+Patterns & Design
+- SOLID: Single responsibility; open/closed; LSP; interface segregation; dependency inversion.
+- Dependency Injection: Pass abstractions; ease testing/mocking.
+- Strategy / Factory / Adapter / Observer: Encapsulate variation, creation, integration, eventing.
+- CQRS & Event Sourcing: Separate read/write models; immutable event log.
+- Hexagonal/Ports & Adapters: Domain-centric; infra as plugins.
+
+Databases & State
+- ACID transactions: Atomicity, Consistency, Isolation, Durability. Isolation levels: Read Uncommitted → Serializable.
+- Indexes: B-tree for range, hash for equality. Covering indexes reduce lookups.
+- ORM pitfalls: N+1 queries; eager vs lazy; transaction scope.
+- Caching: Read-through, write-through/back, TTL; cache stampede (single-flight).
+
+Packaging & Tooling
+- Envs: venv/uv/conda; pin with requirements.txt / pyproject.toml.
+- Entry points: Console scripts via project.scripts (PEP 621).
+- Logging: logging with levels; structure logs (JSON) in prod.
+
+Robustness & APIs
+- Validation: pydantic models; fail fast.
+- HTTP semantics: Idempotent (GET/PUT/DELETE), safe (GET), partial updates (PATCH).
+- Retry policy: Exponential backoff + jitter; only for idempotent ops; timeouts mandatory.
+
+Micro-Patterns (Python Idioms)
+- Context suppress: with contextlib.suppress(KeyError): del d[k]
+- Groupby (sorted): for k, grp in itertools.groupby(sorted(xs, key=key), key=key): ...
+- dataclasses.asdict shallow; deep requires recursion.
+- pathlib over os.path: Path('dir') / 'file.txt'.
+
+Minimal, Correct Snippets (Grab Bag)
+- LRU Cache (manual):
+    from collections import OrderedDict
+    class LRU:
+        def __init__(s, cap): s.cap=cap; s.od=OrderedDict()
+        def get(s,k):
+            if k not in s.od: return -1
+            s.od.move_to_end(k); return s.od[k]
+        def put(s,k,v):
+            s.od[k]=v; s.od.move_to_end(k)
+            if len(s.od)>s.cap: s.od.popitem(last=False)
+- Rate Limiter (Token Bucket):
+    import time
+    class Bucket:
+        def __init__(s, rate, cap): s.r=rate; s.c=cap; s.t=time.perf_counter(); s.tokens=cap
+        def allow(s, cost=1):
+            now=time.perf_counter()
+            s.tokens=min(s.c, s.tokens+(now-s.t)*s.r); s.t=now
+            if s.tokens>=cost: s.tokens-=cost; return True
+            return False
+- Thread-safe Producer/Consumer:
+    from queue import Queue
+    from threading import Thread
+    q=Queue(maxsize=1024)
+    def producer():
+        for item in source(): q.put(item)
+        q.put(None)
+    def consumer():
+        while True:
+            x=q.get()
+            if x is None: break
+            process(x)
+    Thread(target=producer).start()
+    Thread(target=consumer).start()
+- Async HTTP (concurrent):
+    import asyncio, httpx
+    async def fetch_all(urls):
+        async with httpx.AsyncClient(timeout=10) as client:
+            return await asyncio.gather(*(client.get(u) for u in urls))
+- Retry w/ Backoff:
+    import random, time
+    def retry(fn, attempts=5, base=0.1):
+        for i in range(attempts):
+            try: return fn()
+            except Exception:
+                if i==attempts-1: raise
+                time.sleep(base*(2**i) + random.random()*base)
+- SQL (parameterized):
+    cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+
+Final Reminders (Precision)
+- Choose structures for asymptotics + mutability profile.
+- Keep hot paths allocation-free; hoist invariants.
+- Prefer pure functions + explicit data flow; isolate side effects.
+- Validate inputs at boundaries; assert invariants internally.
+- Document contracts (types, pre/post-conditions); test edge cases.
+- For sequences: don’t try seq + 1; index or use vectorized types when desired.
