@@ -311,7 +311,7 @@ If code contains inline “Lxxx:” prefixes, treat them as metadata; do not inc
 - Verify hunks match the BASE exactly (content + indentation), aside from EOL differences; otherwise use `<file>`.
 - Every +/- line must change more than whitespace. Remove redundant/placeholder hunks.
 - Ensure at least one semantic token change exists across the entire response; otherwise, revisit planning.
-- Keep changes strictly within scope; bug fixes from provided errors/stack traces are explicitly in scope.
+- Keep changes strictly within scope; bug fixes prompted by USER-provided errors/stack traces are explicitly in scope.
 - If the detected bug is a scalar/sequence mismatch for a 2D position, the modified lines MUST include “[0]” or “[1]” in the movement logic and use scalar x,y in any Rect construction; otherwise, revisit planning or emit a `<file>` replacement for that target.
 - Bracket integrity: if movement/Rect lines are present, ensure occurrences like pos[0], pos[1] appear literally (not placeholders or removed).
 - Reject any edit where a tuple arg (pos, pos) remains instead of scalar coords (pos[0], pos[1]).
@@ -383,12 +383,12 @@ def should_ignore(path, root_dir, ignored_dirs_set, ignored_exts_set, ignored_fi
             return True
     return False
 
-def generate_tree_structure(root_dir_param, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set):
-    """Generates a string representation of the directory tree."""
+def generate_tree_structure(root_dir_param, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set, depth_limit=None):
+    """Generates a string representation of the directory tree, respecting an optional depth limit."""
     tree_string_io = io.StringIO()
     visited_real_paths_for_tree = set()
 
-    def _generate_recursive(current_path, prefix):
+    def _generate_recursive(current_path, prefix, current_depth=0):
         try:
             real_path = os.path.realpath(current_path)
             if real_path in visited_real_paths_for_tree:
@@ -410,15 +410,15 @@ def generate_tree_structure(root_dir_param, ignored_dirs_set, ignored_exts_set, 
             is_last = (i == len(renderable_items) - 1)
             connector = "└───" if is_last else "├───"
             tree_string_io.write(f"{prefix}{connector}{item['name']}\n")
-            if item['is_dir']:
+            if item['is_dir'] and (depth_limit is None or current_depth < depth_limit):
                 new_prefix = prefix + ("    " if is_last else "│   ")
-                _generate_recursive(item['path'], new_prefix)
+                _generate_recursive(item['path'], new_prefix, current_depth + 1)
 
-    _generate_recursive(root_dir_param, "")
+    _generate_recursive(root_dir_param, "", 0)
     return tree_string_io.getvalue()
 
-def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set):
-    """Walks the project, collates content of non-ignored files using the new XML format."""
+def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set, depth_limit=None):
+    """Walks the project, collates content of non-ignored files using the new XML format, respecting an optional depth limit."""
     output_stream = io.StringIO()
     file_count = 0
     processed_abs_paths = set()
@@ -426,7 +426,15 @@ def collate_project_content(root_dir, ignored_dirs_set, ignored_exts_set, ignore
     reported_ignored_files = []
 
     for dirpath, dirnames, filenames in os.walk(root_dir, topdown=True, followlinks=False):
-        dirnames[:] = [d for d in dirnames if not should_ignore(os.path.join(dirpath, d), root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set)]
+        # Determine current depth relative to root_dir
+        rel = os.path.relpath(dirpath, root_dir)
+        current_depth = 0 if rel == '.' else (rel.count(os.sep) + 1)
+
+        # Prune traversal if depth limit reached
+        if depth_limit is not None and current_depth >= depth_limit:
+            dirnames[:] = []
+        else:
+            dirnames[:] = [d for d in dirnames if not should_ignore(os.path.join(dirpath, d), root_dir, ignored_dirs_set, ignored_exts_set, ignored_filenames_set, only_exts_set)]
         
         filenames.sort()
         for filename in filenames:
@@ -492,6 +500,12 @@ def main():
         action='store_true',
         help="Enable backup mode for this run (overrides default BACKUP=False)."
     )
+    parser.add_argument(
+        '--depth',
+        type=int,
+        default=None,
+        help="Maximum directory depth to traverse (0=current directory only, 1=children, etc.)."
+    )
     args = parser.parse_args()
     project_root = os.getcwd()
 
@@ -501,6 +515,9 @@ def main():
         DEBUG = True
     if args.backup:
         BACKUP = True
+
+    # Normalize depth (must be >= 0 or None for unlimited)
+    depth_limit = args.depth if (args.depth is None or args.depth >= 0) else None
 
     user_specified_ignored_extensions = set()
     for item in args.ignore:
@@ -529,16 +546,28 @@ def main():
     print(f"Ignoring Directories: {sorted(list(final_ignored_directories))}")
     print(f"Ignoring Filenames: {sorted(list(final_ignored_filenames))}")
     print(f"Ignoring Extensions: {sorted(list(final_ignored_extensions))}")
-    print(f"DEBUG: {DEBUG} | BACKUP: {BACKUP}")
+    print(f"DEBUG: {DEBUG} | BACKUP: {BACKUP} | DEPTH: {depth_limit if depth_limit is not None else 'unlimited'}")
     print("-" * 30)
 
     print("Generating directory tree structure...")
-    tree_structure_str = generate_tree_structure(project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames, user_specified_only_extensions)
+    tree_structure_str = generate_tree_structure(
+        project_root,
+        final_ignored_directories,
+        final_ignored_extensions,
+        final_ignored_filenames,
+        user_specified_only_extensions,
+        depth_limit=depth_limit
+    )
     print("Directory tree generated." if tree_structure_str else "Directory tree is empty or all items were ignored.")
     print("-" * 30)
 
     collated_content_str, processed_files_list, ignored_files_list, file_count = collate_project_content(
-        project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames, user_specified_only_extensions
+        project_root,
+        final_ignored_directories,
+        final_ignored_extensions,
+        final_ignored_filenames,
+        user_specified_only_extensions,
+        depth_limit=depth_limit
     )
     
     print("-" * 30)
