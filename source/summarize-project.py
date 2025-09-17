@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+
+# --- Standard configuration (overridable via CLI flags) ---
+DEBUG = False
+PROGRAMMING_CONTEXT = True
+BACKUP = False
+
 import os
 import sys
 import io
@@ -28,7 +34,7 @@ DEFAULT_IGNORED_EXTENSIONS = {
     'exe', 'bin', 'o', 'a', 'lib', 'class', 'jar',
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp',
     'mp3', 'wav', 'ogg', 'mp4', 'mkv', 'avi', 'mov', 'wmv',
-    'iso', 'img', 'dmg', 'ignore'
+    'iso', 'img', 'dmg', 'ignore', 'rej'
 }
 
 DEFAULT_IGNORED_FILENAMES = {
@@ -57,8 +63,8 @@ def cdata_escape(text: str) -> str:
     # Safely embed arbitrary text inside CDATA by splitting any ']]>' sequence.
     return text.replace("]]>", "]]]]><![CDATA[>")
 
-PROGRAMMING_CONTEXT = load_programming_context()
-PROGRAMMING_CONTEXT_CDATA = cdata_escape(PROGRAMMING_CONTEXT)
+PROGRAMMING_CONTEXT_TEXT = load_programming_context()
+PROGRAMMING_CONTEXT_CDATA = cdata_escape(PROGRAMMING_CONTEXT_TEXT)
 
 SYSTEM_PROMPT = r"""<SYSTEM_PROMPT>
 
@@ -290,7 +296,6 @@ If code contains inline “Lxxx:” prefixes, treat them as metadata; do not inc
 <markdown_spec>
 - Prefer `###`/`##` headings; avoid `#`.
 - Use **bold** to highlight critical information.
-- Use `- ` for bullets; format “key: value” bullets as “- **key**: value”.
 - Wrap URLs as markdown links or in backticks; avoid bare URLs.
 </markdown_spec>
 
@@ -315,13 +320,12 @@ If code contains inline “Lxxx:” prefixes, treat them as metadata; do not inc
 
 </SYSTEM_PROMPT>"""
 
-
 # This block is appended to the system prompt at runtime so it remains part of the "system" section.
 PROGRAMMING_CONTEXT_BLOCK = (
     "\n<PROGRAMMING_CONTEXT>\n"
     "<!-- Expert Programming Mechanics & Techniques provided by the USER. "
     "Treat as authoritative guidance unless a request explicitly overrides it. -->\n"
-    "<![CDATA[\n" + PROGRAMMING_CONTEXT + "\n]]>\n"
+    "<![CDATA[\n" + PROGRAMMING_CONTEXT_CDATA + "\n]]>\n"
     "</PROGRAMMING_CONTEXT>\n"
 )
 
@@ -478,8 +482,25 @@ def main():
         default=None,
         help="Only include files with specified extension(s). E.g., 'py' or '[py,js,css]'."
     )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help="Enable debug mode for this run (overrides default DEBUG=False)."
+    )
+    parser.add_argument(
+        '--backup',
+        action='store_true',
+        help="Enable backup mode for this run (overrides default BACKUP=False)."
+    )
     args = parser.parse_args()
     project_root = os.getcwd()
+
+    # Override standard configuration for a single execution if flags are provided
+    global DEBUG, BACKUP
+    if args.debug:
+        DEBUG = True
+    if args.backup:
+        BACKUP = True
 
     user_specified_ignored_extensions = set()
     for item in args.ignore:
@@ -508,6 +529,7 @@ def main():
     print(f"Ignoring Directories: {sorted(list(final_ignored_directories))}")
     print(f"Ignoring Filenames: {sorted(list(final_ignored_filenames))}")
     print(f"Ignoring Extensions: {sorted(list(final_ignored_extensions))}")
+    print(f"DEBUG: {DEBUG} | BACKUP: {BACKUP}")
     print("-" * 30)
 
     print("Generating directory tree structure...")
@@ -523,17 +545,26 @@ def main():
     if processed_files_list:
         print("\nIncluded files in context:")
         for f_path in sorted(processed_files_list):
-            print(f"  - {f_path}")
+            print(f"   - {f_path}")
     
     if ignored_files_list:
         print("\nIgnored files/directories (not included in content):")
         for f_path in sorted(ignored_files_list):
-            print(f"  - {f_path}")
+            print(f"   - {f_path}")
     print("-" * 30)
 
     # --- Assemble the final prompt using the new structure ---
     # We inject PROGRAMMING_CONTEXT_BLOCK right after the SYSTEM_PROMPT so it is part of the "system" section.
-    final_output_parts = [SYSTEM_PROMPT, PROGRAMMING_CONTEXT_BLOCK, "\n\n", USER_PROMPT_INTRO]
+    final_output_parts = [SYSTEM_PROMPT]
+
+    if PROGRAMMING_CONTEXT and PROGRAMMING_CONTEXT_TEXT:
+        final_output_parts.append(PROGRAMMING_CONTEXT_BLOCK)
+        context_included = True
+    else:
+        context_included = False
+
+    final_output_parts.append("\n\n")
+    final_output_parts.append(USER_PROMPT_INTRO)
 
     if tree_structure_str:
         final_output_parts.append("\n--- Project Directory Tree ---\n")
@@ -550,10 +581,10 @@ def main():
         try:
             pyperclip.copy(final_output)
             print(f"Successfully processed {file_count} files and included the directory tree.")
-            if PROGRAMMING_CONTEXT:
+            if context_included:
                 print("Included programming_context.txt as PROGRAMMING_CONTEXT in the system prompt.")
             else:
-                print("No programming_context.txt content included.")
+                print("Programming context not included.")
             print("Full context prompt has been copied to the clipboard!")
         except pyperclip.PyperclipException as e:
             print(f"\nError: Could not copy to clipboard: {e}", file=sys.stderr)
