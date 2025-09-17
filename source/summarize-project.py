@@ -38,7 +38,10 @@ DEFAULT_IGNORED_FILENAMES = {
 
 # --- Load extra programming context and make it available to the system prompt ---
 
-def load_programming_context(path="programming_context.txt"):
+def load_programming_context():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(base_dir, "programming_context.txt")
+
     try:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
@@ -48,6 +51,7 @@ def load_programming_context(path="programming_context.txt"):
     except Exception as e:
         print(f"Warning: Could not read '{path}': {e}. Proceeding without extra programming context.", file=sys.stderr)
         return ""
+    
 
 def cdata_escape(text: str) -> str:
     # Safely embed arbitrary text inside CDATA by splitting any ']]>' sequence.
@@ -317,7 +321,7 @@ PROGRAMMING_CONTEXT_BLOCK = (
     "\n<PROGRAMMING_CONTEXT>\n"
     "<!-- Expert Programming Mechanics & Techniques provided by the USER. "
     "Treat as authoritative guidance unless a request explicitly overrides it. -->\n"
-    "<![CDATA[\n" + PROGRAMMING_CONTEXT_CDATA + "\n]]>\n"
+    "<![CDATA[\n" + PROGRAMMING_CONTEXT + "\n]]>\n"
     "</PROGRAMMING_CONTEXT>\n"
 )
 
