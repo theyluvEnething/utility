@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Configuration (defaults; can be overridden by CLI flags)
+DEBUG = False      # override with --debug
+BACKUP = False     # override with --backup
+
 import os
 import sys
 import re
@@ -355,7 +359,10 @@ def apply_patch(original_content, diff_text, *, debug=False, ignore_eol=True, fu
 
 
 def main():
-    debug = '--debug' in sys.argv
+    # Baseline from top-level defaults; allow one-off overrides via CLI flags
+    debug = DEBUG
+    if '--debug' in sys.argv:
+        debug = True
 
     # Fuzzy options
     fuzzy_threshold = 0.88  # default
@@ -372,8 +379,8 @@ def main():
                 print("Warning: invalid --fuzzy value; using default 0.88", file=sys.stderr)
                 fuzzy_threshold = 0.88
 
-    # Backups are on by default for safety; you can disable with --no-backup
-    backup_patched = False
+    # Backups are OFF by default; enable with --backup
+    backup_patched = BACKUP
     if '--backup' in sys.argv:
         backup_patched = True
 
@@ -617,7 +624,7 @@ def main():
 
             os.makedirs(os.path.dirname(path), exist_ok=True)
 
-            # Backup before writing
+            # Optional backup before writing
             try:
                 if backup_patched and os.path.exists(path):
                     backup_path = path + ".bak"
@@ -633,14 +640,6 @@ def main():
             counts['patched'] += 1
         except (OSError, IOError, ValueError) as e:
             print(f"\nError applying patch to {op['path']}: {e}")
-            # Write reject file for inspection
-            try:
-                rej_path = path + ".rej"
-                with open(rej_path, 'w', encoding='utf-8', newline='') as rf:
-                    rf.write(op['diff'])
-                print(f"  Wrote reject diff to: {rej_path}")
-            except Exception as re_err:
-                print(f"  (Also failed to write .rej file: {re_err})", file=sys.stderr)
             counts['errors'] += 1
 
     print("-" * 40)
