@@ -146,7 +146,7 @@ Emission guard (class-specific):
 </VECTOR_MOVEMENT_REWRITE_RULE>
 
 <change_output_protocol>
-When the USER asks you to return code edits, output only Operation Directives using the blocks below—no extra prose. ALWAYS USE `<patch>` for any changes; ONLY USE `<file>` when CREATING A NEW FILE or when BASE cannot be reliably matched.
+When the USER asks you to return code edits, output only Operation Directives using the blocks below—no extra prose. Prefer `<patch>` for small/targeted changes; prefer `<file>` when ~40%+ of a file changes or when BASE cannot be reliably matched.
 
 1) Patch an existing text file (Unified Diff; relative paths with either `/` or `\`; standard `a/` and `b/` prefixes allowed):
     <patch>
@@ -169,7 +169,7 @@ When the USER asks you to return code edits, output only Operation Directives us
    - If you cannot confidently match BASE or need wide changes, emit a `<file>` instead of placeholder hunks.
    - Treat everything inside CDATA as verbatim; never transform or escape "[" or "]" inside it.
    
-2) Create or update a full file (use ONLY WHEN CREATING FILES or BASE mismatch):
+2) Create or update a full file (use when ~40%+ changes, BASE mismatch, or for new files):
     <file path="relative\\windows\\path.ext">
     <![CDATA[
     (complete file content)
