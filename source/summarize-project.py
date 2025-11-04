@@ -23,7 +23,7 @@ except ImportError:
 
 DEFAULT_IGNORED_DIRECTORIES = {
     '.git', 'pycache', 'venv', '.venv', 'node_modules', '.vscode', '.idea',
-    'dist', 'build', '.angular', 'temp'
+    'dist', 'build', '.angular', 'temp', '.history'
 }
 
 DEFAULT_IGNORED_EXTENSIONS = {
@@ -146,7 +146,7 @@ Emission guard (class-specific):
 </VECTOR_MOVEMENT_REWRITE_RULE>
 
 <change_output_protocol>
-When the USER asks you to return code edits, output only Operation Directives using the blocks below—no extra prose. Prefer `<patch>` for small/targeted changes; prefer `<file>` when ~40%+ of a file changes or when BASE cannot be reliably matched.
+When the USER asks you to return code edits, output only Operation Directives using the blocks below—no extra prose. `<patch>` is outdated. ALWAYS USE `<file>`.
 
 1) Patch an existing text file (Unified Diff; relative paths with either `/` or `\`; standard `a/` and `b/` prefixes allowed):
     <patch>
@@ -169,7 +169,7 @@ When the USER asks you to return code edits, output only Operation Directives us
    - If you cannot confidently match BASE or need wide changes, emit a `<file>` instead of placeholder hunks.
    - Treat everything inside CDATA as verbatim; never transform or escape "[" or "]" inside it.
    
-2) Create or update a full file (use when ~40%+ changes, BASE mismatch, or for new files):
+2) Create or update a full file (ALWAYS USE FOR UPDATING OR CREATING A FILE):
     <file path="relative\\windows\\path.ext">
     <![CDATA[
     (complete file content)
