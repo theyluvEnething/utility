@@ -213,6 +213,11 @@ def main():
         default=None,
         help="Only include files with specified extension(s). E.g., 'py' or '[py,js,css]'."
     )
+    parser.add_argument(
+        '--no-project-structure',
+        action='store_true',
+        help="Omit the directory tree structure from the final output prompt."
+    )
     args = parser.parse_args()
     project_root = os.getcwd()
 
@@ -245,9 +250,13 @@ def main():
     print(f"Ignoring Extensions: {sorted(list(final_ignored_extensions))}")
     print("-" * 30)
 
-    print("Generating directory tree structure...")
-    tree_structure_str = generate_tree_structure(project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames, user_specified_only_extensions)
-    print("Directory tree generated." if tree_structure_str else "Directory tree is empty or all items were ignored.")
+    tree_structure_str = ""
+    if not args.no_project_structure:
+        print("Generating directory tree structure...")
+        tree_structure_str = generate_tree_structure(project_root, final_ignored_directories, final_ignored_extensions, final_ignored_filenames, user_specified_only_extensions)
+        print("Directory tree generated." if tree_structure_str else "Directory tree is empty or all items were ignored.")
+    else:
+        print("Skipping directory tree structure generation (--no-project-structure flag used).")
     print("-" * 30)
 
     collated_content_str, processed_files_list, ignored_files_list, file_count = collate_project_content(
@@ -273,6 +282,8 @@ def main():
         final_output_parts.append("\n--- Project Directory Tree ---\n")
         final_output_parts.append(tree_structure_str)
         final_output_parts.append("\n--- File Contents ---\n\n")
+    else:
+        final_output_parts.append("\n--- File Contents ---\n\n")
     
     if collated_content_str:
         final_output_parts.append(collated_content_str)
@@ -283,7 +294,7 @@ def main():
     if file_count > 0 or tree_structure_str:
         try:
             pyperclip.copy(final_output)
-            print(f"Successfully processed {file_count} files and included the directory tree.")
+            print(f"Successfully processed {file_count} files.")
             print("Full context prompt has been copied to the clipboard!")
         except pyperclip.PyperclipException as e:
             print(f"\nError: Could not copy to clipboard: {e}", file=sys.stderr)
