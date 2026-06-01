@@ -14,7 +14,7 @@ IGNORE_DIRS = {
     '__pycache__', 'node_modules', '.git', 'venv', '.venv',
     'build', 'dist', 'builds', '.vscode', '.idea', 'target'
 }
-IGNORE_EXTENSIONS = {'.pyc', '.log', '.tmp', '.swp', '.egg-info'}
+IGNORE_EXTENSIONS = {'.pyc', '.log', '.tmp', '.swp', '.egg-info', '.mtl'}
 IGNORE_FILES = {'.DS_Store'}
 
 def _build_tree_recursive(path, prefix, include_files):

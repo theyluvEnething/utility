@@ -31,7 +31,7 @@ DEFAULT_IGNORED_EXTENSIONS = {
     'mp3', 'wav', 'ogg', 'mp4', 'mkv', 'avi', 'mov', 'wmv',
     'iso', 'img', 'dmg', 'ignore',
     'xml',
-    'obj', 'fbx', 'stl', 'gltf', 'glb', '3ds', 'blend', 'dae', 'ply',
+    'mtl', 'obj', 'fbx', 'stl', 'gltf', 'glb', '3ds', 'blend', 'dae', 'ply',
     'usd', 'usdz', 'usda', 'usdc', 'max', 'ma', 'mb', 'c4d', 'wrl', 'abc'
 }
 
