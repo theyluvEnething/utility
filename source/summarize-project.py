@@ -16,8 +16,9 @@ except ImportError:
 # --- Configuration for files and directories to ignore ---
 
 DEFAULT_IGNORED_DIRECTORIES = {
-    '.git', 'pycache', 'venv', '.venv', 'node_modules', '.vscode', '.idea',
-    'dist', 'build', '.angular', 'temp'
+    '.git', '.claude', '.planning', 'pycache', 'venv', '.venv',
+    'node_modules', '.vscode', '.idea', 'dist', 'build', '.angular', 'temp',
+    'libraries', 'target', 'gen', 'icons'
 }
 
 DEFAULT_IGNORED_EXTENSIONS = {
