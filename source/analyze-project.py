@@ -29,7 +29,10 @@ DEFAULT_IGNORED_EXTENSIONS = {
     'exe', 'bin', 'o', 'a', 'lib', 'class', 'jar',
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp',
     'mp3', 'wav', 'ogg', 'mp4', 'mkv', 'avi', 'mov', 'wmv',
-    'iso', 'img', 'dmg', 'ignore'
+    'iso', 'img', 'dmg', 'ignore',
+    'xml',
+    'obj', 'fbx', 'stl', 'gltf', 'glb', '3ds', 'blend', 'dae', 'ply',
+    'usd', 'usdz', 'usda', 'usdc', 'max', 'ma', 'mb', 'c4d', 'wrl', 'abc'
 }
 
 DEFAULT_IGNORED_FILENAMES = {
