@@ -11,7 +11,7 @@ Windows, macOS, and Linux.
 
 1. Add the `source/` directory to your `PATH`.
 2. Install the one third-party dependency: `pip install pyperclip`.
-3. Run any command by name (e.g. `ls`, `ports`, `check-port 5000`).
+3. Run any command by name (e.g. `ls`, `ports`, `show-port 5000`).
 
 On Windows each tool has a `.bat` launcher; on macOS/Linux run the `.py`
 directly or add small shell aliases.
@@ -23,7 +23,7 @@ directly or add small shell aliases.
 | Command | Description |
 | --- | --- |
 | `ports` | List every listening TCP port and the process that owns it. |
-| `check-port <PORT>` | Show what is listening on a port (read-only). |
+| `show-port <PORT>` | Show what is listening on a port (read-only). Alias: `check-port`. |
 | `stop-port <PORT>` | Kill whatever owns a port and report what was killed. `--dry-run` to preview. |
 
 Port lookups use PowerShell (`Get-NetTCPConnection`) on Windows and `ss`/`lsof`
@@ -107,4 +107,4 @@ ignore_filenames = ["NOTES.txt"]
 
 `generate-project` and `stop-port` change your filesystem / kill processes.
 `generate-project` confirms before writing and rejects unsafe paths; `stop-port`
-acts immediately (use `--dry-run` or `check-port` first if unsure).
+acts immediately (use `--dry-run` or `show-port` first if unsure).

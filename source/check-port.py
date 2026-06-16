@@ -1,35 +1,13 @@
 #!/usr/bin/env python3
-"""check-port <PORT> — show what is listening on a port, without touching it."""
-import sys
+"""check-port — alias for show-port. See show-port.py for the implementation."""
+import importlib.util
+import os
 
-from utilkit import ports, ui
-
-
-def main():
-    if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
-        print("Usage: check-port <PORT>")
-        sys.exit(0 if len(sys.argv) == 2 else 1)
-
-    try:
-        port = int(sys.argv[1])
-    except ValueError:
-        ui.error(f"'{sys.argv[1]}' is not a valid port number.")
-        sys.exit(1)
-
-    entries = ports.on_port(port)
-    if not entries:
-        ui.info(f"Nothing is listening on port {ui.style(port, 'bold')}.")
-        sys.exit(1)
-
-    ui.header(f"Port {port}")
-    rows = [
-        [e["process"], str(e["pid"]), e["state"], e["cmdline"] or "—"]
-        for e in entries
-    ]
-    ui.table(rows, ["PROCESS", "PID", "STATE", "PATH"], aligns=["l", "r", "l", "l"])
-    print()
-    ui.info(f"To free it:  {ui.style(f'stop-port {port}', 'bold')}")
+_impl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "show-port.py")
+_spec = importlib.util.spec_from_file_location("show_port", _impl_path)
+_show_port = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_show_port)
 
 
 if __name__ == "__main__":
-    main()
+    _show_port.main()
