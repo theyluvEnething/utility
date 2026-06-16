@@ -1,61 +1,110 @@
-
-# AI-Native Development & Context Bridge CLI
+# utility — a small cross-platform CLI toolkit
 
 ![Preview](preview.png)
 
-## Overview
+A suite of command-line utilities for everyday development: bridging a codebase
+into an LLM and back, managing local ports, reconnecting to SSH servers, and a
+few Unix ergonomics for Windows. Written in Python so the same tools can run on
+Windows, macOS, and Linux.
 
-This repository houses a suite of high-performance Command Line Interface (CLI) utilities designed to bridge the gap between local Windows development environments and Large Language Models (LLMs).
+## Install
 
-In the era of AI-assisted engineering, the bottleneck is no longer code syntax, but **context velocity**—the speed at which a developer can serialize a codebase into an LLM and deserialize the generated response back into the filesystem. This toolkit eliminates that friction, turning the Windows command prompt into a powerful, Linux-adjacent environment optimized for rapid iteration.
+1. Add the `source/` directory to your `PATH`.
+2. Install the one third-party dependency: `pip install pyperclip`.
+3. Run any command by name (e.g. `ls`, `ports`, `check-port 5000`).
 
-![Preview](preview2.png)
+On Windows each tool has a `.bat` launcher; on macOS/Linux run the `.py`
+directly or add small shell aliases.
 
-## Technical Architecture
+## Commands
 
-The framework operates on a "Context-Action" loop, enabling developers to treat their IDE as a state machine manipulated by high-fidelity AI prompts.
-
-### 1. Context Serialization & Ingestion
-
-The core of the framework is the **Context Ingestion Engine**. Instead of manually copy-pasting file contents, the `analyze-project` and `copy-files` modules provide a surgical interface for extracting codebase state.
-
-* **Intelligent Token Optimization**: The engine parses `.gitignore` rules and employs heuristic filtering (ignoring binaries, locks, and logs) to generate a dense, token-efficient representation of the project structure and content.
-* **Tree & Content Collation**: `analyze-project` generates a visual directory tree followed by XML-wrapped file contents. This format is specifically engineered to maximize an LLM's understanding of project hierarchy and file relationships.
-* **Clipboard Integration**: All outputs are piped directly to the system clipboard via `pyperclip`, ready for immediate injection into an LLM context window.
-
-### 2. Deterministic Code Generation (The Generator)
-
-The `generate-project` module acts as the "write" head of the system. It parses structured XML responses from LLMs to execute file operations with surgical precision.
-
-* **Atomic Operations**: Supports `create`, `update`, `delete`, and `rename` operations.
-* **Safety Protocols**: Includes path sanitization to prevent directory traversal attacks and confirms operations before execution, ensuring the AI cannot accidentally destroy data outside the project scope.
-* **XML Parsing**: robustly handles `<![CDATA[...]]>` blocks, allowing the generation of code containing special characters without parsing errors.
-
-### 3. Windows Environment Homogenization
-
-To further accelerate development on Windows, this suite includes a compatibility layer that brings essential Linux/Unix ergonomics to `cmd.exe`.
-
-* **`ls` (Colorized Listing)**: A Python-based reimplementation of the Unix `ls` command. It features full color support based on file types (directories, executables, source files) and intelligent grid formatting, replacing the verbose Windows `dir`.
-* **`.sh` Script Runner**: A lightweight interpreter that allows `.sh` shell scripts to execute natively on Windows. It parses and runs common bash commands (`export`, `cd`, `uvicorn`, etc.) without requiring WSL or Git Bash, enabling cross-platform script compatibility.
-* **`cwd` (Path Normalization)**: Instantly retrieves the current working directory formatted as a Linux-style path (forward slashes), ready for use in configuration files or prompts.
-
-## Command Reference
+### Ports
 
 | Command | Description |
 | --- | --- |
-| `analyze-project` | Scans the directory, builds a tree, and copies relevant file contents to clipboard for AI analysis. |
-| `generate-project` | Reads XML-formatted file operations from the clipboard and applies them to the filesystem. |
-| `ls` | Lists directory contents with Unix-style color coding and grid layout. |
-| `cwd` | Copies the current directory path to clipboard using forward slashes (`/`). |
-| `admin` | Spawns a new command prompt instance with Administrator privileges in the current directory. |
-| `sh <script.sh>` | Executes a shell script using the internal Python-based interpreter. |
+| `ports` | List every listening TCP port and the process that owns it. |
+| `check-port <PORT>` | Show what is listening on a port (read-only). |
+| `stop-port <PORT>` | Kill whatever owns a port and report what was killed. `--dry-run` to preview. |
 
-## Usage
+Port lookups use PowerShell (`Get-NetTCPConnection`) on Windows and `ss`/`lsof`
+on Unix — invoked internally, so the tools work the same from `cmd`,
+PowerShell, or a Unix terminal.
 
-1. Add the `source` directory to your Windows System `PATH` environment variable.
-2. Open any command prompt (`cmd` or PowerShell).
-3. Execute commands directly (e.g., type `ls` to list files).
+### SSH sessions
+
+| Command | Description |
+| --- | --- |
+| `connect-server user@host [-p PORT] [-i KEY] [--label NAME]` | Connect via the system `ssh` client and remember the session. |
+| `connect-server` | Pick a previously used server from a most-recent-first list. |
+| `connect-server --list` | List saved servers. |
+| `connect-server --remove <n>` | Forget the server at position `<n>`. |
+
+Only connection details are stored (in `~/.config/utilkit/servers.json`) —
+**never passwords**. Authentication is left entirely to `ssh` (keys, agent, or
+its own prompt).
+
+### LLM context bridge
+
+| Command | Description |
+| --- | --- |
+| `analyze-project` | Collate the project (tree + files) with a read-and-answer prompt → clipboard. |
+| `summarize-project` | Same collation with a make-the-change prompt, paired with `generate-project`. |
+| `copy-files` | Copy just the XML-wrapped file contents (no prompt, no tree). |
+| `project-structure` | Print and copy the directory tree. |
+| `generate-project` | Apply `<file>`/`<delete>`/`<rename>` blocks from the clipboard, with a confirm step and path-safety checks. |
+
+Common flags: `--only py` / `--only [py,js]` to include only some extensions,
+`--ignore json` to add extra ignores, `--no-tree` to skip the tree.
+
+| Command | Description |
+| --- | --- |
+| `get-programming-prompt` | Copy the standard engineer + file-format prompt. |
+| `get-format-prompt` | Copy a "re-emit your last reply in the file format" prompt. |
+| `get-remember-prompt` | Copy a short "keep using the file format" reminder. |
+
+### Unix ergonomics
+
+| Command | Description |
+| --- | --- |
+| `ls [path]` | Colorized, grid-formatted directory listing. |
+| `cwd` | Print the current directory with forward slashes and copy it. |
+| `extract <archive>` | Unpack `.zip`/`.tar.*`/`.gz` (and `.7z`/`.rar` via helpers) into `./<name>/`, with zip-slip protection. |
+| `sh <script.sh>` | Run a simple shell script with a lightweight built-in interpreter. |
+| `admin` | Open an elevated prompt in the current directory (Windows). |
+
+## Architecture
+
+Shared logic lives in `source/utilkit/` so the tools don't duplicate it:
+
+- `config.py` — the single source of truth for ignore rules; extendable via
+  `~/.config/utilkit/config.toml`.
+- `walk.py` — project walking, tree rendering, binary detection.
+- `collate.py` / `prompts.py` — XML collation and the embedded prompts.
+- `ports.py` / `platform_ps.py` — port lookup and process control per platform.
+- `sessions.py` — the SSH session store.
+- `fileops.py` — parsing/applying file-operation blocks.
+- `ui.py` — shared colors, tables, and headers (with ASCII fallback on legacy
+  consoles).
+
+## Tests
+
+```
+python tests/test_utilkit.py
+```
+
+## Configuration
+
+Drop a `~/.config/utilkit/config.toml` to extend the ignore lists without
+editing source:
+
+```toml
+ignore_directories = ["my_cache"]
+ignore_extensions = ["bak2"]
+ignore_filenames = ["NOTES.txt"]
+```
 
 ## Disclaimer
 
-This toolkit is provided for productivity enhancement and educational purposes. While the `generate-project` script includes safety checks, always review AI-generated file operations before confirming execution. The author accepts no liability for data loss resulting from automated file manipulation.
+`generate-project` and `stop-port` change your filesystem / kill processes.
+`generate-project` confirms before writing and rejects unsafe paths; `stop-port`
+acts immediately (use `--dry-run` or `check-port` first if unsure).

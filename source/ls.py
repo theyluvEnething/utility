@@ -116,7 +116,7 @@ def format_single_column_output(path):
 def main():
     target_path = '.'
     if len(sys.argv) > 1:
-        target_path = sys.argv
+        target_path = sys.argv[1]
 
     if not os.path.exists(target_path) or not os.path.isdir(target_path):
         print(f"ls: cannot access '{target_path}': No such file or directory", file=sys.stderr)

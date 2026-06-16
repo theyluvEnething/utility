@@ -141,15 +141,18 @@ def run_script(interpreter, script_path, args):
     
 
 def main():
-    if len(sys.argv) > 1:
-        script_args = sys.argv[2:]
-    elif len(sys.argv) < 2:
-        print(f"sh: No file was provided", file=sys.stderr)
-        sys.exit(1)
+    if len(sys.argv) < 2:
+        interpreter = ShInterpreter(script_mode=False)
+        try:
+            interpreter.cmdloop()
+        except KeyboardInterrupt:
+            print()
+        sys.exit(interpreter.last_return_code)
 
+    script_args = sys.argv[2:]
     script_path = os.path.abspath(sys.argv[1])
     script_dir = os.path.dirname(script_path)
-    
+
     interpreter = ShInterpreter(script_mode=True)
 
     if script_dir:
@@ -161,13 +164,10 @@ def main():
         except Exception as e:
             print(f"sh: failed to change directory to '{script_dir}': {e}", file=sys.stderr)
             sys.exit(1)
-        script_basename = os.path.basename(script_path)
-        
-        run_script(interpreter, script_basename, script_args)
-        sys.exit(interpreter.last_return_code)
-        
-        interpreter = ShInterpreter(script_mode=False)
-        interpreter.cmdloop()
+
+    run_script(interpreter, os.path.basename(script_path), script_args)
+    sys.exit(interpreter.last_return_code)
+
 
 if __name__ == "__main__":
     main()
