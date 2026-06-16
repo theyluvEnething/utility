@@ -1,4 +1,6 @@
 """Unit tests for utilkit pure logic. Run: python -m pytest tests/ (or unittest)."""
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -7,7 +9,7 @@ import zipfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "source"))
 
-from utilkit import collate, fileops, sessions, walk  # noqa: E402
+from utilkit import collate, fileops, sessions, ui, walk  # noqa: E402
 
 
 class TestWalk(unittest.TestCase):
@@ -103,6 +105,32 @@ class TestSessions(unittest.TestCase):
         removed = sessions.remove(1)
         self.assertIsNotNone(removed)
         self.assertEqual(len(sessions.load()), 1)
+
+
+class TestUI(unittest.TestCase):
+    def test_truncate_no_reset_when_plain(self):
+        self.assertEqual(ui.truncate("abcdefghij", 5), "abcd…")
+        self.assertNotIn("\x1b", ui.truncate("abcdefghij", 5))
+
+    def test_truncate_closes_color(self):
+        out = ui.truncate("\x1b[31mabcdefghij\x1b[0m", 5)
+        self.assertTrue(out.endswith("\x1b[0m"))
+
+    def test_truncate_keeps_short_text(self):
+        self.assertEqual(ui.truncate("abc", 10), "abc")
+
+    def test_card_lines_are_aligned(self):
+        os.environ["COLUMNS"] = "100"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ui.card("title here", [
+                ("PID", "1234"),
+                ("Location", "C:/a/very/long/path/to/some/executable/program.exe"),
+                (None, None),
+                ("Memory", "20 MB"),
+            ])
+        widths = {ui.visible_len(line) for line in buf.getvalue().splitlines()}
+        self.assertEqual(len(widths), 1, f"card lines misaligned: {widths}")
 
 
 class TestExtractTraversal(unittest.TestCase):

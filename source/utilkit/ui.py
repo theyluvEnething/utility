@@ -6,6 +6,7 @@ terminal that cannot handle ANSI, so piped output stays clean. Box-drawing
 glyphs fall back to ASCII when the console encoding cannot represent them.
 """
 import os
+import re
 import shutil
 import sys
 
@@ -36,6 +37,12 @@ _GLYPHS = {
     "tee": ("├──", "+--"),
     "elbow": ("└──", "`--"),
     "pipe": ("│", "|"),
+    "tl": ("╭", "+"),
+    "tr": ("╮", "+"),
+    "bl": ("╰", "+"),
+    "br": ("╯", "+"),
+    "h": ("─", "-"),
+    "v": ("│", "|"),
 }
 
 
@@ -173,3 +180,84 @@ def table(rows, headers, aligns=None):
     print(style("  ".join(glyph("rule") * w for w in widths), "dim"))
     for row in rows:
         print(fmt(row))
+
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+def visible_len(text):
+    """Length of ``text`` ignoring ANSI color codes."""
+    return len(_ANSI_RE.sub("", text))
+
+
+def truncate(text, limit):
+    """Truncate ``text`` to ``limit`` visible columns with an ellipsis.
+
+    ANSI codes are preserved up to the cut and a reset is appended so color
+    never leaks past the box border.
+    """
+    if visible_len(text) <= limit:
+        return text
+    if limit <= 1:
+        return "…"
+    out = []
+    shown = 0
+    i = 0
+    had_ansi = False
+    target = limit - 1
+    while i < len(text) and shown < target:
+        m = _ANSI_RE.match(text, i)
+        if m:
+            out.append(m.group())
+            had_ansi = True
+            i = m.end()
+            continue
+        out.append(text[i])
+        shown += 1
+        i += 1
+    return "".join(out) + "…" + (_RESET if had_ansi else "")
+
+
+def card(title, fields, *, accent="cyan"):
+    """Draw a rounded bordered panel.
+
+    ``title`` is the heading shown in the top border. ``fields`` is a list of
+    ``(label, value)`` pairs; a pair of ``(None, None)`` draws a divider. Values
+    may contain ANSI codes — width is measured ignoring them, and lines too wide
+    for the terminal are truncated so the border always stays aligned.
+    """
+    label_w = max((visible_len(str(lbl)) for lbl, _ in fields if lbl), default=0)
+    body_lines = []
+    for label, value in fields:
+        if label is None:
+            body_lines.append(None)
+            continue
+        gap = label_w - visible_len(str(label))
+        body_lines.append(f"{style(str(label), 'dim')}{' ' * gap}   {value}")
+
+    # ``span`` is the number of columns strictly between the two border glyphs.
+    # Body rows render as: v + span(=" " + content + padding + " ") + v.
+    content_w = max([visible_len(line) for line in body_lines if line]
+                    + [visible_len(title) + 2], default=10)
+    max_content = max(term_width() - 4, 16)
+    content_w = min(content_w, max_content)
+    span = content_w + 2  # one space margin on each side
+
+    h, v = glyph("h"), glyph("v")
+    tl, tr, bl, br = glyph("tl"), glyph("tr"), glyph("bl"), glyph("br")
+    border = lambda s: style(s, accent)
+
+    title_text = " " + truncate(title, content_w - 3) + " "
+    title_fill = span - visible_len(title_text) - 1
+    print(border(tl + h) + style(title_text, "bold", accent)
+          + border(h * max(title_fill, 0) + tr))
+
+    for line in body_lines:
+        if line is None:
+            print(border(v) + style(h * span, "dim") + border(v))
+            continue
+        line = truncate(line, content_w)
+        pad = content_w - visible_len(line)
+        print(border(v) + " " + line + " " * max(pad, 0) + " " + border(v))
+
+    print(border(bl + h * span + br))

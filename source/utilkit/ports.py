@@ -126,6 +126,53 @@ def on_port(port):
     return [r for r in list_listening() if r["port"] == port]
 
 
+def ports_for_pid(pid):
+    """Return the listening entries owned by ``pid`` (empty if none)."""
+    return [r for r in list_listening() if r["pid"] == pid]
+
+
+_PS_DETAIL = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$p = Get-Process -Id {pid} -ErrorAction SilentlyContinue
+if (-not $p) {{ '' ; exit }}
+$cores = [Environment]::ProcessorCount
+$uptimeSec = if ($p.StartTime) {{ ((Get-Date) - $p.StartTime).TotalSeconds }} else {{ 0 }}
+$cpuPct = if ($p.CPU -and $uptimeSec -gt 0) {{
+    [math]::Round(($p.CPU / $uptimeSec) * 100 / $cores, 1)
+}} else {{ 0 }}
+[pscustomobject]@{{
+    name        = $p.ProcessName
+    pid         = $p.Id
+    path        = if ($p.Path) {{ $p.Path }} else {{ '' }}
+    description = if ($p.Description) {{ $p.Description }} else {{ '' }}
+    company     = if ($p.Company) {{ $p.Company }} else {{ '' }}
+    memory_mb   = [math]::Round($p.WorkingSet64 / 1MB, 1)
+    cpu_seconds = if ($p.CPU) {{ [math]::Round($p.CPU, 1) }} else {{ 0 }}
+    cpu_percent = $cpuPct
+    threads     = $p.Threads.Count
+    uptime_sec  = [math]::Round($uptimeSec, 0)
+}} | ConvertTo-Json -Compress -Depth 3
+"""
+
+
+def process_detail(pid):
+    """Return a dict of rich process info for ``pid``, or ``None`` if unavailable.
+
+    Keys: name, pid, path, description, company, memory_mb, cpu_seconds,
+    cpu_percent, threads, uptime_sec. Currently Windows-only (PowerShell);
+    returns ``None`` elsewhere so callers fall back to the basic view.
+    """
+    if os.name != "nt":
+        return None
+    code, out, _ = platform_ps.run(_PS_DETAIL.format(pid=int(pid)))
+    if code != 0 or not out.strip():
+        return None
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        return None
+
+
 def kill(pid):
     """Terminate a process by PID. Returns ``(ok, message)``."""
     if os.name == "nt":
