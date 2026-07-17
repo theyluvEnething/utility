@@ -57,8 +57,12 @@ def should_ignore(path, root, *, extra_exts=None, only_exts=None):
     return False
 
 
-def render_tree(root, *, extra_exts=None, only_exts=None):
-    """Return a string drawing of the directory tree rooted at ``root``."""
+def render_tree(root, *, extra_exts=None, only_exts=None, only_folders=False, depth=None):
+    """Return a string drawing of the directory tree rooted at ``root``.
+
+    ``only_folders`` excludes files from the output. ``depth`` limits how many
+    levels are shown (1 = immediate children of ``root``, 2 = their children, ...).
+    """
     out = io.StringIO()
     seen = set()
 
@@ -66,7 +70,9 @@ def render_tree(root, *, extra_exts=None, only_exts=None):
     elbow = ui.glyph("elbow") + " "
     pipe = ui.glyph("pipe") + "   "
 
-    def recurse(current, prefix):
+    def recurse(current, prefix, level):
+        if depth is not None and level > depth:
+            return
         try:
             real = os.path.realpath(current)
             if real in seen:
@@ -80,8 +86,11 @@ def render_tree(root, *, extra_exts=None, only_exts=None):
         items = []
         for entry in entries:
             full = os.path.join(current, entry)
+            is_dir = os.path.isdir(full)
+            if only_folders and not is_dir:
+                continue
             if not should_ignore(full, root, extra_exts=extra_exts, only_exts=only_exts):
-                items.append((entry, full, os.path.isdir(full)))
+                items.append((entry, full, is_dir))
 
         for i, (name, full, is_dir) in enumerate(items):
             last = i == len(items) - 1
@@ -89,10 +98,10 @@ def render_tree(root, *, extra_exts=None, only_exts=None):
             suffix = "/" if is_dir else ""
             out.write(f"{prefix}{connector}{name}{suffix}\n")
             if is_dir:
-                recurse(full, prefix + ("    " if last else pipe))
+                recurse(full, prefix + ("    " if last else pipe), level + 1)
 
     out.write(f"{os.path.basename(os.path.abspath(root)) or root}/\n")
-    recurse(root, "")
+    recurse(root, "", 1)
     return out.getvalue()
 
 
