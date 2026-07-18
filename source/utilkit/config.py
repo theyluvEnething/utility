@@ -15,7 +15,8 @@ IGNORED_DIRECTORIES = {
     ".next", ".nuxt", ".cache", ".pytest_cache", ".mypy_cache",
     ".gradle", "coverage", ".tox", ".eggs",
     ".codex", ".cursor", ".windsurf", ".aider.tags.cache.v3",
-    ".copilot", ".continue",
+    ".copilot", ".continue", ".playwright-mcp", ".superpowers",
+    ".claude-plugin", "test-results",
 }
 
 IGNORED_EXTENSIONS = {
