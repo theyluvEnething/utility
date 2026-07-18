@@ -14,6 +14,8 @@ IGNORED_DIRECTORIES = {
     ".angular", "temp", "tmp", "libraries", "target", "gen", "icons",
     ".next", ".nuxt", ".cache", ".pytest_cache", ".mypy_cache",
     ".gradle", "coverage", ".tox", ".eggs",
+    ".codex", ".cursor", ".windsurf", ".aider.tags.cache.v3",
+    ".copilot", ".continue",
 }
 
 IGNORED_EXTENSIONS = {
@@ -35,6 +37,8 @@ IGNORED_FILENAMES = {
     "LICENSE", "LICENCE", "README.md", "CONTRIBUTING.md", "CHANGELOG.md",
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock",
     "Cargo.lock", "composer.lock",
+    "AGENTS.md", "CLAUDE.md", "GEMINI.md", ".aider.chat.history.md",
+    ".aider.input.history",
 }
 
 
